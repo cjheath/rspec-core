@@ -1,19 +1,16 @@
 Feature: before and after hooks
 
-  As a developer using RSpec
-  I want to execute arbitrary code before and after each example
-  So that I can control the environment in which it is run
+  Use `before` and `after` hooks to execute arbitrary code before and/or
+  after the body of an example is run:
 
-    This is supported by the before and after methods which each take a symbol
-    indicating the scope, and a block of code to execute.
+      before(:each) # run before each example
+      before(:all)  # run one time only, before all of the examples in a group
 
-    before(:each) blocks are run before each example
-    before(:all) blocks are run once before all of the examples in a group
+      after(:each) # run after each example
+      after(:all)  # run one time only, after all of the examples in a group
 
-    after(:each) blocks are run after each example
-    after(:all) blocks are run once after all of the examples in a group
+  Before and after blocks are called in the following order:
 
-    Before and after blocks are called in the following order:
       before suite
       before all
       before each
@@ -21,10 +18,8 @@ Feature: before and after hooks
       after  all
       after  suite
 
-    Before and after blocks can be defined in the example groups to which they
-    apply or in a configuration. When defined in a configuration, they can be
-    applied to all groups or subsets of all groups defined by example group
-    types.
+  `before` and `after` hooks can be defined directly in the example groups they
+  should run in, or in a global RSpec.configure block.
 
   Scenario: define before(:each) block
     Given a file named "before_each_spec.rb" with:
@@ -57,8 +52,8 @@ Feature: before and after hooks
         end
       end
       """
-    When I run "rspec ./before_each_spec.rb"
-    Then the output should contain "3 examples, 0 failures"
+    When I run `rspec before_each_spec.rb`
+    Then the examples should all pass
 
   Scenario: define before(:all) block in example group
     Given a file named "before_all_spec.rb" with:
@@ -91,11 +86,11 @@ Feature: before and after hooks
         end
       end
       """
-    When I run "rspec ./before_all_spec.rb"
-    Then the output should contain "3 examples, 0 failures"
+    When I run `rspec before_all_spec.rb`
+    Then the examples should all pass
 
-    When I run "rspec ./before_all_spec.rb:15"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec before_all_spec.rb:15`
+    Then the examples should all pass
 
   Scenario: failure in before(:all) block
     Given a file named "before_all_spec.rb" with:
@@ -129,7 +124,7 @@ Feature: before and after hooks
         end
       end
       """
-    When I run "rspec ./before_all_spec.rb --format documentation"
+    When I run `rspec before_all_spec.rb --format documentation`
     Then the output should contain "5 examples, 5 failures"
     And the output should contain:
       """
@@ -144,15 +139,12 @@ Feature: before and after hooks
       after all ran
       """
 
-    When I run "rspec ./before_all_spec.rb:9 --format documentation"
+    When I run `rspec before_all_spec.rb:9 --format documentation`
     Then the output should contain "1 example, 1 failure"
     And the output should contain:
       """
       an error in before(:all)
         fails this example, too (FAILED - 1)
-        nested group
-          yet another level deep
-      after all ran
       """
 
   Scenario: failure in after(:all) block
@@ -170,8 +162,8 @@ Feature: before and after hooks
         end
       end
       """
-    When I run "rspec after_all_spec.rb"
-    Then the output should contain "2 examples, 0 failures"
+    When I run `rspec after_all_spec.rb`
+    Then the examples should all pass
     And the output should contain:
       """
       An error occurred in an after(:all) hook.
@@ -195,18 +187,18 @@ Feature: before and after hooks
       describe "stuff in before blocks" do
         describe "with :all" do
           it "should be available in the example" do
-            @before_all.should == "before all"
+            @before_all.should eq("before all")
           end
         end
         describe "with :each" do
           it "should be available in the example" do
-            @before_each.should == "before each"
+            @before_each.should eq("before each")
           end
         end
       end
       """
-    When I run "rspec ./befores_in_configuration_spec.rb"
-    Then the output should contain "2 examples, 0 failures"
+    When I run `rspec befores_in_configuration_spec.rb`
+    Then the examples should all pass
 
   Scenario: before/after blocks are run in order
     Given a file named "ensure_block_order_spec.rb" with:
@@ -235,7 +227,7 @@ Feature: before and after hooks
         end
       end
       """
-    When I run "rspec ./ensure_block_order_spec.rb"
+    When I run `rspec --format progress ensure_block_order_spec.rb`
     Then the output should contain:
       """
       before all
@@ -280,7 +272,7 @@ Feature: before and after hooks
         end
       end
       """
-    When I run "rspec configuration_spec.rb"
+    When I run `rspec --format progress configuration_spec.rb`
     Then the output should contain:
       """
       before suite
@@ -321,8 +313,8 @@ Feature: before and after hooks
 
       end
       """
-    When I run "rspec ./before_and_after_all_spec.rb"
-    Then the output should contain "2 examples, 0 failures"
+    When I run `rspec --format progress before_and_after_all_spec.rb`
+    Then the examples should all pass
     And the output should contain:
       """
       outer before all
@@ -331,8 +323,8 @@ Feature: before and after hooks
       outer after all
       """
 
-    When I run "rspec ./before_and_after_all_spec.rb:14"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec --format progress before_and_after_all_spec.rb:14`
+    Then the examples should all pass
     And the output should contain:
       """
       outer before all
@@ -341,8 +333,8 @@ Feature: before and after hooks
       outer after all
       """
 
-    When I run "rspec ./before_and_after_all_spec.rb:6"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec --format progress before_and_after_all_spec.rb:6`
+    Then the examples should all pass
     And the output should contain:
       """
       outer before all
@@ -371,13 +363,13 @@ Feature: before and after hooks
 
         describe "nested in parallel" do
           it "access state set in before(:all)" do
-            @value.should == 123
+            @value.should eq(123)
           end
         end
       end
       """
-    When I run "rspec before_all_spec.rb"
-    Then the output should contain "3 examples, 0 failures"
+    When I run `rspec before_all_spec.rb`
+    Then the examples should all pass
 
   Scenario: before/after all blocks have access to state
     Given a file named "before_and_after_all_spec.rb" with:
@@ -407,13 +399,12 @@ Feature: before and after hooks
         end
 
         after(:all) do
-          # p @outer_state.nil?
           @outer_state.should eq("set in outer before all")
         end
       end
       """
-    When I run "rspec ./before_and_after_all_spec.rb"
-    Then the output should contain "2 examples, 0 failures"
+    When I run `rspec before_and_after_all_spec.rb`
+    Then the examples should all pass
 
   Scenario: exception in before(:each) is captured and reported as failure
     Given a file named "error_in_before_each_spec.rb" with:
@@ -427,6 +418,6 @@ Feature: before and after hooks
         end
       end
       """
-    When I run "rspec ./error_in_before_each_spec.rb"
+    When I run `rspec error_in_before_each_spec.rb`
     Then the output should contain "1 example, 1 failure"
     And the output should contain "this error"

@@ -11,20 +11,21 @@ module RSpec
         @world         = world
       end
 
+      # Configures and runs a suite
+      #
+      # @param [IO] err
+      # @param [IO] out
       def run(err, out)
         @configuration.error_stream = err
         @configuration.output_stream ||= out
         @options.configure(@configuration)
         @configuration.load_spec_files
-        @configuration.configure_mock_framework
-        @configuration.configure_expectation_framework
-        @world.announce_inclusion_filter
-        @world.announce_exclusion_filter
+        @world.announce_filters
 
-        @configuration.reporter.report(@world.example_count) do |reporter|
+        @configuration.reporter.report(@world.example_count, @configuration.randomize? ? @configuration.seed : nil) do |reporter|
           begin
             @configuration.run_hook(:before, :suite)
-            @world.example_groups.map {|g| g.run(reporter)}.all?
+            @world.example_groups.ordered.map {|g| g.run(reporter)}.all? ? 0 : @configuration.failure_exit_code
           ensure
             @configuration.run_hook(:after, :suite)
           end

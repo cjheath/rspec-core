@@ -11,8 +11,46 @@ class SelfObserver
 end
 
 module RSpec::Core
-
   describe ExampleGroup do
+    it_behaves_like "metadata hash builder" do
+      def metadata_hash(*args)
+        group = ExampleGroup.describe('example description', *args)
+        group.metadata
+      end
+    end
+
+    context 'when RSpec.configuration.treat_symbols_as_metadata_keys_with_true_values is set to false' do
+      before(:each) do
+        RSpec.configure { |c| c.treat_symbols_as_metadata_keys_with_true_values = false }
+      end
+
+      it 'processes string args as part of the description' do
+        group = ExampleGroup.describe("some", "separate", "strings")
+        group.description.should eq("some separate strings")
+      end
+
+      it 'processes symbol args as part of the description' do
+        Kernel.stub(:warn) # to silence Symbols as args warning
+        group = ExampleGroup.describe(:some, :separate, :symbols)
+        group.description.should eq("some separate symbols")
+      end
+    end
+
+    context 'when RSpec.configuration.treat_symbols_as_metadata_keys_with_true_values is set to true' do
+      let(:group) { ExampleGroup.describe(:symbol) }
+
+      before(:each) do
+        RSpec.configure { |c| c.treat_symbols_as_metadata_keys_with_true_values = true }
+      end
+
+      it 'does not treat the first argument as a metadata key even if it is a symbol' do
+        group.metadata.should_not include(:symbol)
+      end
+
+      it 'treats the first argument as part of the description when it is a symbol' do
+        group.description.should eq("symbol")
+      end
+    end
 
     describe "top level group" do
       it "runs its children" do
@@ -57,7 +95,7 @@ module RSpec::Core
               describe("grandchild 2") {}
             end
           end
-          group.descendants.size.should == 4
+          group.descendants.size.should eq(4)
         end
       end
     end
@@ -66,64 +104,143 @@ module RSpec::Core
       it "is known by parent" do
         parent = ExampleGroup.describe
         child = parent.describe
-        parent.children.should == [child]
+        parent.children.should eq([child])
       end
 
       it "is not registered in world" do
         world = RSpec::Core::World.new
         parent = ExampleGroup.describe
         world.register(parent)
-        child = parent.describe
-        world.example_groups.should == [parent]
+        parent.describe
+        world.example_groups.should eq([parent])
       end
     end
 
     describe "filtering" do
       let(:world) { World.new }
 
-      it "includes all examples in an explicitly included group" do
-        world.stub(:inclusion_filter).and_return({ :awesome => true })
-        group = ExampleGroup.describe("does something", :awesome => true)
-        group.stub(:world) { world }
+      shared_examples "matching filters" do
+        context "inclusion" do
+          before do
+            filter_manager = FilterManager.new
+            filter_manager.include filter_metadata
+            world.stub(:filter_manager => filter_manager)
+          end
 
-        examples = [
-          group.example("first"),
-          group.example("second")
-        ]
-        group.filtered_examples.should == examples
+          it "includes examples in groups matching filter" do
+            group = ExampleGroup.describe("does something", spec_metadata)
+            group.stub(:world) { world }
+            all_examples = [ group.example("first"), group.example("second") ]
+
+            group.filtered_examples.should eq(all_examples)
+          end
+
+          it "includes examples directly matching filter" do
+            group = ExampleGroup.describe("does something")
+            group.stub(:world) { world }
+            filtered_examples = [
+              group.example("first", spec_metadata),
+              group.example("second", spec_metadata)
+            ]
+            group.example("third (not-filtered)")
+
+            group.filtered_examples.should eq(filtered_examples)
+          end
+        end
+
+        context "exclusion" do
+          before do
+            filter_manager = FilterManager.new
+            filter_manager.exclude filter_metadata
+            world.stub(:filter_manager => filter_manager)
+          end
+
+          it "excludes examples in groups matching filter" do
+            group = ExampleGroup.describe("does something", spec_metadata)
+            group.stub(:world) { world }
+            [ group.example("first"), group.example("second") ]
+
+            group.filtered_examples.should be_empty
+          end
+
+          it "excludes examples directly matching filter" do
+            group = ExampleGroup.describe("does something")
+            group.stub(:world) { world }
+            [
+              group.example("first", spec_metadata),
+              group.example("second", spec_metadata)
+            ]
+            unfiltered_example = group.example("third (not-filtered)")
+
+            group.filtered_examples.should eq([unfiltered_example])
+          end
+        end
       end
 
-      it "includes explicitly included examples" do
-        world.stub(:inclusion_filter).and_return({ :include_me => true })
-        group = ExampleGroup.describe
-        group.stub(:world) { world }
-        example = group.example("does something", :include_me => true)
-        group.example("don't run me")
-        group.filtered_examples.should == [example]
+      context "matching false" do
+        let(:spec_metadata)    { { :awesome => false }}
+
+        context "against false" do
+          let(:filter_metadata)  { { :awesome => false }}
+          include_examples "matching filters"
+        end
+
+        context "against 'false'" do
+          let(:filter_metadata)  { { :awesome => 'false' }}
+          include_examples "matching filters"
+        end
+
+        context "against :false" do
+          let(:filter_metadata)  { { :awesome => :false }}
+          include_examples "matching filters"
+        end
       end
 
-      it "excludes all examples in an excluded group" do
-        world.stub(:exclusion_filter).and_return({ :include_me => false })
-        group = ExampleGroup.describe("does something", :include_me => false)
-        group.stub(:world) { world }
+      context "matching true" do
+        let(:spec_metadata)    { { :awesome => true }}
 
-        examples = [
-          group.example("first"),
-          group.example("second")
-        ]
-        group.filtered_examples.should == []
+        context "against true" do
+          let(:filter_metadata)  { { :awesome => true }}
+          include_examples "matching filters"
+        end
+
+        context "against 'true'" do
+          let(:filter_metadata)  { { :awesome => 'true' }}
+          include_examples "matching filters"
+        end
+
+        context "against :true" do
+          let(:filter_metadata)  { { :awesome => :true }}
+          include_examples "matching filters"
+        end
       end
 
-      it "filters out excluded examples" do
-        world.stub(:exclusion_filter).and_return({ :exclude_me => true })
-        group = ExampleGroup.describe("does something")
-        group.stub(:world) { world }
+      context "matching a string" do
+        let(:spec_metadata)    { { :type => 'special' }}
 
-        examples = [
-          group.example("first", :exclude_me => true),
-          group.example("second")
-        ]
-        group.filtered_examples.should == [examples[1]]
+        context "against a string" do
+          let(:filter_metadata)  { { :type => 'special' }}
+          include_examples "matching filters"
+        end
+
+        context "against a symbol" do
+          let(:filter_metadata)  { { :type => :special }}
+          include_examples "matching filters"
+        end
+      end
+
+      context "matching a symbol" do
+        let(:spec_metadata)    { { :type => :special }}
+
+        context "against a string" do
+          let(:filter_metadata)  { { :type => 'special' }}
+          include_examples "matching filters"
+        end
+
+        context "against a symbol" do
+          let(:filter_metadata)  { { :type => :special }}
+          include_examples "matching filters"
+        end
       end
 
       context "with no filters" do
@@ -131,32 +248,34 @@ module RSpec::Core
           group = ExampleGroup.describe
           group.stub(:world) { world }
           example = group.example("does something")
-          group.filtered_examples.should == [example]
+          group.filtered_examples.should eq([example])
         end
       end
 
       context "with no examples or groups that match filters" do
         it "returns none" do
-          world.stub(:inclusion_filter).and_return({ :awesome => false })
+          filter_manager = FilterManager.new
+          filter_manager.include :awesome => false
+          world.stub(:filter_manager => filter_manager)
           group = ExampleGroup.describe
           group.stub(:world) { world }
-          example = group.example("does something")
-          group.filtered_examples.should == []
+          group.example("does something")
+          group.filtered_examples.should eq([])
         end
       end
     end
 
-    describe '#describes' do
+    describe '#described_class' do
 
       context "with a constant as the first parameter" do
         it "is that constant" do
-          ExampleGroup.describe(Object) { }.describes.should == Object
+          ExampleGroup.describe(Object) { }.described_class.should eq(Object)
         end
       end
 
       context "with a string as the first parameter" do
         it "is nil" do
-          ExampleGroup.describe("i'm a computer") { }.describes.should be_nil
+          ExampleGroup.describe("i'm a computer") { }.described_class.should be_nil
         end
       end
 
@@ -165,8 +284,24 @@ module RSpec::Core
           it "is the top level constant" do
             group = ExampleGroup.describe(String) do
               describe :symbol do
-                example "describes is String" do
+                example "described_class is String" do
                   described_class.should eq(String)
+                end
+              end
+            end
+
+            group.run.should be_true
+          end
+        end
+
+        context "and metadata redefinition after `described_class` call" do
+          it "is the redefined level constant" do
+            group = ExampleGroup.describe(String) do
+              described_class
+              metadata[:example_group][:described_class] = Object
+              describe :symbol do
+                example "described_class is Object" do
+                  described_class.should eq(Object)
                 end
               end
             end
@@ -189,47 +324,54 @@ module RSpec::Core
           group.run.should be_true, "expected examples in group to pass"
         end
       end
-
-
     end
 
     describe '#described_class' do
-      it "is the same as describes" do
-        self.class.described_class.should eq(self.class.describes)
+      it "is the same as described_class" do
+        self.class.described_class.should eq(self.class.described_class)
       end
     end
 
     describe '#description' do
-
       it "grabs the description from the metadata" do
         group = ExampleGroup.describe(Object, "my desc") { }
-        group.description.should == group.metadata[:example_group][:description]
+        group.description.should eq(group.metadata[:example_group][:description])
       end
-
     end
 
     describe '#metadata' do
-
       it "adds the third parameter to the metadata" do
         ExampleGroup.describe(Object, nil, 'foo' => 'bar') { }.metadata.should include({ "foo" => 'bar' })
       end
 
       it "adds the the file_path to metadata" do
-        ExampleGroup.describe(Object) { }.metadata[:example_group][:file_path].should == __FILE__
+        ExampleGroup.describe(Object) { }.metadata[:example_group][:file_path].should eq(relative_path(__FILE__))
       end
 
       it "has a reader for file_path" do
-        ExampleGroup.describe(Object) { }.file_path.should == __FILE__
+        ExampleGroup.describe(Object) { }.file_path.should eq(relative_path(__FILE__))
       end
 
       it "adds the line_number to metadata" do
-        ExampleGroup.describe(Object) { }.metadata[:example_group][:line_number].should == __LINE__
+        ExampleGroup.describe(Object) { }.metadata[:example_group][:line_number].should eq(__LINE__)
       end
+    end
 
+    [:focus, :focused].each do |example_alias|
+      describe "##{example_alias}" do
+        let(:focused_example) { ExampleGroup.describe.send example_alias, "a focused example" }
+
+        it 'defines an example that can be filtered with :focused => true' do
+          focused_example.metadata[:focused].should be_true
+        end
+
+        it 'defines an example that can be filtered with :focus => true' do
+          focused_example.metadata[:focus].should be_true
+        end
+      end
     end
 
     describe "#before, after, and around hooks" do
-
       it "runs the before alls in order" do
         group = ExampleGroup.describe
         order = []
@@ -240,7 +382,7 @@ module RSpec::Core
 
         group.run
 
-        order.should == [1,2,3]
+        order.should eq([1,2,3])
       end
 
       it "runs the before eachs in order" do
@@ -253,7 +395,7 @@ module RSpec::Core
 
         group.run
 
-        order.should == [1,2,3]
+        order.should eq([1,2,3])
       end
 
       it "runs the after eachs in reverse order" do
@@ -266,7 +408,7 @@ module RSpec::Core
 
         group.run
 
-        order.should == [3,2,1]
+        order.should eq([3,2,1])
       end
 
       it "runs the after alls in reverse order" do
@@ -279,7 +421,7 @@ module RSpec::Core
 
         group.run
 
-        order.should == [3,2,1]
+        order.should eq([3,2,1])
       end
 
       it "only runs before/after(:all) hooks from example groups that have specs that run" do
@@ -310,7 +452,7 @@ module RSpec::Core
         unfiltered_group.run
         filtered_group.run
 
-        hooks_run.should == [:filtered_before_all, :filtered_after_all]
+        hooks_run.should eq([:filtered_before_all, :filtered_after_all])
       end
 
       it "runs before_all_defined_in_config, before all, before each, example, after each, after all, after_all_defined_in_config in that order" do
@@ -338,7 +480,7 @@ module RSpec::Core
 
         group.run
 
-        order.should == [
+        order.should eq([
           :before_all_defined_in_config,
           :top_level_before_all,
           :before_each,
@@ -354,39 +496,61 @@ module RSpec::Core
           :nested_after_all,
           :top_level_after_all,
           :after_all_defined_in_config
-        ]
+        ])
       end
 
-      it "accesses before(:all) state in after(:all)" do
-        group = ExampleGroup.describe
-        group.before(:all) { @ivar = "value" }
-        group.after(:all)  { @ivar.should eq("value") }
-        group.example("ignore") {  }
+      context "after(:all)" do
+        let(:outer) { ExampleGroup.describe }
+        let(:inner) { outer.describe }
 
-        expect do
-          group.run
-        end.to_not raise_error
+        it "has access to state defined before(:all)" do
+          outer.before(:all) { @outer = "outer" }
+          inner.before(:all) { @inner = "inner" }
+
+          outer.after(:all) do
+            @outer.should eq("outer")
+            @inner.should eq("inner")
+          end
+          inner.after(:all) do
+            @inner.should eq("inner")
+            @outer.should eq("outer")
+          end
+
+          outer.run
+        end
+
+        it "cleans up ivars in after(:all)" do
+          outer.before(:all) { @outer = "outer" }
+          inner.before(:all) { @inner = "inner" }
+
+          outer.run
+
+          inner.before_all_ivars[:@inner].should be_nil
+          inner.before_all_ivars[:@outer].should be_nil
+          outer.before_all_ivars[:@inner].should be_nil
+          outer.before_all_ivars[:@outer].should be_nil
+        end
       end
 
       it "treats an error in before(:each) as a failure" do
         group = ExampleGroup.describe
         group.before(:each) { raise "error in before each" }
-        example = group.example("equality") { 1.should == 2}
-        group.run
+        example = group.example("equality") { 1.should eq(2) }
+        group.run.should be(false)
 
-        example.metadata[:execution_result][:exception].message.should == "error in before each"
+        example.metadata[:execution_result][:exception].message.should eq("error in before each")
       end
 
       it "treats an error in before(:all) as a failure" do
         group = ExampleGroup.describe
         group.before(:all) { raise "error in before all" }
-        example = group.example("equality") { 1.should == 2}
-        group.run
+        example = group.example("equality") { 1.should eq(2) }
+        group.run.should be_false
 
         example.metadata.should_not be_nil
         example.metadata[:execution_result].should_not be_nil
         example.metadata[:execution_result][:exception].should_not be_nil
-        example.metadata[:execution_result][:exception].message.should == "error in before all"
+        example.metadata[:execution_result][:exception].message.should eq("error in before all")
       end
 
       it "treats an error in before(:all) as a failure for a spec in a nested group" do
@@ -395,7 +559,7 @@ module RSpec::Core
           before(:all) { raise "error in before all" }
 
           describe "nested" do
-            example = it("equality") { 1.should == 2}
+            example = it("equality") { 1.should eq(2) }
           end
         end
         group.run
@@ -403,7 +567,7 @@ module RSpec::Core
         example.metadata.should_not be_nil
         example.metadata[:execution_result].should_not be_nil
         example.metadata[:execution_result][:exception].should_not be_nil
-        example.metadata[:execution_result][:exception].message.should == "error in before all"
+        example.metadata[:execution_result][:exception].message.should eq("error in before all")
       end
 
       context "when an error occurs in an after(:all) hook" do
@@ -414,7 +578,7 @@ module RSpec::Core
         let(:group) do
           ExampleGroup.describe do
             after(:all) { raise "error in after all" }
-            it("equality") { 1.should == 1 }
+            it("equality") { 1.should eq(1) }
           end
         end
 
@@ -423,7 +587,7 @@ module RSpec::Core
           example = group.examples.first
           example.metadata.should_not be_nil
           example.metadata[:execution_result].should_not be_nil
-          example.metadata[:execution_result][:status].should == "passed"
+          example.metadata[:execution_result][:status].should eq("passed")
         end
 
         it "rescues the error and prints it out" do
@@ -438,7 +602,7 @@ module RSpec::Core
         group.before(:all) { running_example = example }
         group.example("no-op") { }
         group.run
-        running_example.should == nil
+        running_example.should be(nil)
       end
 
       it "has access to example options within before(:each)" do
@@ -447,7 +611,7 @@ module RSpec::Core
         group.before(:each) { option = example.options[:data] }
         group.example("no-op", :data => :sample) { }
         group.run
-        option.should == :sample
+        option.should eq(:sample)
       end
 
       it "has access to example options within after(:each)" do
@@ -456,7 +620,7 @@ module RSpec::Core
         group.after(:each) { option = example.options[:data] }
         group.example("no-op", :data => :sample) { }
         group.run
-        option.should == :sample
+        option.should eq(:sample)
       end
 
       it "has no 'running example' within after(:all)" do
@@ -465,7 +629,31 @@ module RSpec::Core
         group.after(:all) { running_example = example }
         group.example("no-op") { }
         group.run
-        running_example.should == nil
+        running_example.should be(nil)
+      end
+    end
+
+    %w[pending xit xspecify xexample].each do |method_name|
+      describe "::#{method_name}" do
+        before do
+          @group = ExampleGroup.describe
+          @group.send(method_name, "is pending") { }
+        end
+
+        it "generates a pending example" do
+          @group.run
+          @group.examples.first.should be_pending
+        end
+
+        it "sets the pending message", :if => method_name == 'pending' do
+          @group.run
+          @group.examples.first.metadata[:execution_result][:pending_message].should eq(RSpec::Core::Pending::NO_REASON_GIVEN)
+        end
+
+        it "sets the pending message", :unless => method_name == 'pending' do
+          @group.run
+          @group.examples.first.metadata[:execution_result][:pending_message].should eq("Temporarily disabled with #{method_name}")
+        end
       end
     end
 
@@ -474,14 +662,7 @@ module RSpec::Core
       it "allows adding an example using 'it'" do
         group = ExampleGroup.describe
         group.it("should do something") { }
-        group.examples.size.should == 1
-      end
-
-      it "allows adding a pending example using 'xit'" do
-        group = ExampleGroup.describe
-        group.xit("is pending") { }
-        group.run
-        group.examples.first.should be_pending
+        group.examples.size.should eq(1)
       end
 
       it "exposes all examples at examples" do
@@ -497,9 +678,9 @@ module RSpec::Core
         group.it("should 1") { }
         group.it("should 2") { }
         group.it("should 3") { }
-        group.examples[0].description.should == 'should 1'
-        group.examples[1].description.should == 'should 2'
-        group.examples[2].description.should == 'should 3'
+        group.examples[0].description.should eq('should 1')
+        group.examples[1].description.should eq('should 2')
+        group.examples[2].description.should eq('should 3')
       end
 
     end
@@ -508,11 +689,11 @@ module RSpec::Core
 
       describe "A sample nested group", :nested_describe => "yep" do
         it "sets the described class to the described class of the outer most group" do
-          example.example_group.describes.should eq(ExampleGroup)
+          example.example_group.described_class.should eq(ExampleGroup)
         end
 
         it "sets the description to 'A sample nested describe'" do
-          example.example_group.description.should == 'A sample nested group'
+          example.example_group.description.should eq('A sample nested group')
         end
 
         it "has top level metadata from the example_group and its ancestors" do
@@ -532,28 +713,28 @@ module RSpec::Core
 
       it "returns true if all examples pass" do
         group = ExampleGroup.describe('group') do
-          example('ex 1') { 1.should == 1 }
-          example('ex 2') { 1.should == 1 }
+          example('ex 1') { 1.should eq(1) }
+          example('ex 2') { 1.should eq(1) }
         end
-        group.stub(:filtered_examples) { group.examples }
+        group.stub(:filtered_examples) { group.examples.extend(Extensions::Ordered) }
         group.run(reporter).should be_true
       end
 
       it "returns false if any of the examples fail" do
         group = ExampleGroup.describe('group') do
-          example('ex 1') { 1.should == 1 }
-          example('ex 2') { 1.should == 2 }
+          example('ex 1') { 1.should eq(1) }
+          example('ex 2') { 1.should eq(2) }
         end
-        group.stub(:filtered_examples) { group.examples }
+        group.stub(:filtered_examples) { group.examples.extend(Extensions::Ordered) }
         group.run(reporter).should be_false
       end
 
       it "runs all examples, regardless of any of them failing" do
         group = ExampleGroup.describe('group') do
-          example('ex 1') { 1.should == 2 }
-          example('ex 2') { 1.should == 1 }
+          example('ex 1') { 1.should eq(2) }
+          example('ex 2') { 1.should eq(1) }
         end
-        group.stub(:filtered_examples) { group.examples }
+        group.stub(:filtered_examples) { group.examples.extend(Extensions::Ordered) }
         group.filtered_examples.each do |example|
           example.should_receive(:run)
         end
@@ -571,11 +752,11 @@ module RSpec::Core
       end
 
       it "can access a before each ivar at the same level" do
-        @before_each_top_level.should == 'before_each_top_level'
+        @before_each_top_level.should eq('before_each_top_level')
       end
 
       it "can access a before all ivar at the same level" do
-        @before_all_top_level.should == 'before_all_top_level'
+        @before_all_top_level.should eq('before_all_top_level')
       end
 
       it "can access the before all ivars in the before_all_ivars hash", :ruby => 1.8 do
@@ -588,11 +769,11 @@ module RSpec::Core
 
       describe "but now I am nested" do
         it "can access a parent example groups before each ivar at a nested level" do
-          @before_each_top_level.should == 'before_each_top_level'
+          @before_each_top_level.should eq('before_each_top_level')
         end
 
         it "can access a parent example groups before all ivar at a nested level" do
-          @before_all_top_level.should == "before_all_top_level"
+          @before_all_top_level.should eq("before_all_top_level")
         end
 
         it "changes to before all ivars from within an example do not persist outside the current describe" do
@@ -601,7 +782,7 @@ module RSpec::Core
 
         describe "accessing a before_all ivar that was changed in a parent example_group" do
           it "does not have access to the modified version" do
-            @before_all_top_level.should == 'before_all_top_level'
+            @before_all_top_level.should eq('before_all_top_level')
           end
         end
       end
@@ -611,79 +792,15 @@ module RSpec::Core
     describe "ivars are not shared across examples" do
       it "(first example)" do
         @a = 1
-        @b.should be_nil
+        defined?(@b).should be_false
       end
 
       it "(second example)" do
         @b = 2
-        @a.should be_nil
+        defined?(@a).should be_false
       end
     end
 
-    describe "#its" do
-      context "with nil value" do
-        subject do
-          Class.new do
-            def nil_value
-              nil
-            end
-          end.new
-        end
-        its(:nil_value) { should be_nil }
-      end
-
-      context "with nested attributes" do
-        subject do
-          Class.new do
-            def name
-              "John"
-            end
-          end.new
-        end
-        its("name.size") { should == 4 }
-        its("name.size.class") { should == Fixnum }
-      end
-
-      context "when it is a Hash" do
-        subject do
-          { :attribute => 'value',
-            'another_attribute' => 'another_value' }
-        end
-        its([:attribute]) { should == 'value' }
-        its([:attribute]) { should_not == 'another_value' }
-        its([:another_attribute]) { should == 'another_value' }
-        its([:another_attribute]) { should_not == 'value' }
-        its(:keys) { should =~ ['another_attribute', :attribute] }
-        context "when referring to an attribute without the proper array syntax" do
-          context "it raises an error" do
-            its(:attribute) do
-              expect do
-                should eq('value')
-              end.to raise_error(NoMethodError)
-            end
-          end
-        end
-      end
-
-      context "calling and overriding super" do
-        it "calls to the subject defined in the parent group" do
-          group = ExampleGroup.describe(Array) do
-            subject { [1, 'a'] }
-
-            its(:last) { should == 'a' }
-
-            describe '.first' do
-              def subject; super().first; end
-
-              its(:next) { should == 2 }
-            end
-          end
-
-          group.run.should be_true
-        end
-      end
-
-    end
 
     describe "#top_level_description" do
       it "returns the description from the outermost example group" do
@@ -695,7 +812,7 @@ module RSpec::Core
           end
         end
 
-        group.top_level_description.should == "top"
+        group.top_level_description.should eq("top")
       end
     end
 
@@ -752,7 +869,7 @@ module RSpec::Core
             it "does something" do
               # pass
             end
-            describe ("nested") do
+            describe "nested" do
               it "does something else" do
                 # pass
               end
@@ -769,7 +886,7 @@ module RSpec::Core
             it "does something (wrong - fail)" do
               raise "fail"
             end
-            describe ("nested") do
+            describe "nested" do
               it "does something else" do
                 # pass
               end
@@ -786,7 +903,7 @@ module RSpec::Core
             it "does something" do
               # pass
             end
-            describe ("nested") do
+            describe "nested" do
               it "does something else (wrong -fail)" do
                 raise "fail"
               end
@@ -798,5 +915,184 @@ module RSpec::Core
       end
     end
 
+    %w[include_examples include_context].each do |name|
+      describe "##{name}" do
+        before do
+          shared_examples "named this" do
+            example("does something") {}
+          end
+        end
+
+        it "includes the named examples" do
+          group = ExampleGroup.describe
+          group.send(name, "named this")
+          group.examples.first.description.should eq("does something")
+        end
+
+        it "raises a helpful error message when shared content is not found" do
+          group = ExampleGroup.describe
+          expect do
+            group.send(name, "shared stuff")
+          end.to raise_error(ArgumentError, /Could not find .* "shared stuff"/)
+        end
+
+        it "passes parameters to the shared content" do
+          passed_params = {}
+
+          shared_examples "named this with params" do |param1, param2|
+            it("has access to the given parameters") do
+              passed_params[:param1] = param1
+              passed_params[:param2] = param2
+            end
+          end
+
+          group = ExampleGroup.describe
+          group.send(name, "named this with params", :value1, :value2)
+          group.run
+
+          passed_params.should eq({ :param1 => :value1, :param2 => :value2 })
+        end
+
+        it "adds shared instance methods to the group" do
+          shared_examples "named this with params" do |param1|
+            def foo; end
+          end
+          group = ExampleGroup.describe('fake group')
+          group.send(name, "named this with params", :a)
+          group.public_instance_methods.map{|m| m.to_s}.should include("foo")
+        end
+
+        it "evals the shared example group only once" do
+          eval_count = 0
+          shared_examples("named this with params") { |p| eval_count += 1 }
+          group = ExampleGroup.describe('fake group')
+          group.send(name, "named this with params", :a)
+          eval_count.should eq(1)
+        end
+
+        it "evals the block when given" do
+          key = "#{__FILE__}:#{__LINE__}"
+          shared_examples(key) do
+            it("does something") do
+              foo.should eq("bar")
+            end
+          end
+          group = ExampleGroup.describe do
+            send name, key do
+              def foo; "bar"; end
+            end
+          end
+          group.run.should be_true
+        end
+      end
+    end
+
+    describe "#it_should_behave_like" do
+      it "creates a nested group" do
+        shared_examples_for("thing") {}
+        group = ExampleGroup.describe('fake group')
+        group.it_should_behave_like("thing")
+        group.should have(1).children
+      end
+
+      it "creates a nested group for a class" do
+        klass = Class.new
+        shared_examples_for(klass) {}
+        group = ExampleGroup.describe('fake group')
+        group.it_should_behave_like(klass)
+        group.should have(1).children
+      end
+
+      it "adds shared examples to nested group" do
+        shared_examples_for("thing") do
+          it("does something")
+        end
+        group = ExampleGroup.describe('fake group')
+        shared_group = group.it_should_behave_like("thing")
+        shared_group.should have(1).examples
+      end
+
+      it "adds shared instance methods to nested group" do
+        shared_examples_for("thing") do
+          def foo; end
+        end
+        group = ExampleGroup.describe('fake group')
+        shared_group = group.it_should_behave_like("thing")
+        shared_group.public_instance_methods.map{|m| m.to_s}.should include("foo")
+      end
+
+      it "adds shared class methods to nested group" do
+        shared_examples_for("thing") do
+          def self.foo; end
+        end
+        group = ExampleGroup.describe('fake group')
+        shared_group = group.it_should_behave_like("thing")
+        shared_group.methods.map{|m| m.to_s}.should include("foo")
+      end
+
+      it "passes parameters to the shared example group" do
+        passed_params = {}
+
+        shared_examples_for("thing") do |param1, param2|
+          it("has access to the given parameters") do
+            passed_params[:param1] = param1
+            passed_params[:param2] = param2
+          end
+        end
+
+        group = ExampleGroup.describe("group") do
+          it_should_behave_like "thing", :value1, :value2
+        end
+        group.run
+
+        passed_params.should eq({ :param1 => :value1, :param2 => :value2 })
+      end
+
+      it "adds shared instance methods to nested group" do
+        shared_examples_for("thing") do |param1|
+          def foo; end
+        end
+        group = ExampleGroup.describe('fake group')
+        shared_group = group.it_should_behave_like("thing", :a)
+        shared_group.public_instance_methods.map{|m| m.to_s}.should include("foo")
+      end
+
+      it "evals the shared example group only once" do
+        eval_count = 0
+        shared_examples_for("thing") { |p| eval_count += 1 }
+        group = ExampleGroup.describe('fake group')
+        group.it_should_behave_like("thing", :a)
+        eval_count.should eq(1)
+      end
+
+      context "given a block" do
+        it "evaluates the block in nested group" do
+          scopes = []
+          shared_examples_for("thing") do
+            it("gets run in the nested group") do
+              scopes << self.class
+            end
+          end
+          group = ExampleGroup.describe("group") do
+            it_should_behave_like "thing" do
+              it("gets run in the same nested group") do
+                scopes << self.class
+              end
+            end
+          end
+          group.run
+
+          scopes[0].should be(scopes[1])
+        end
+      end
+
+      it "raises a helpful error message when shared context is not found" do
+        expect do
+          ExampleGroup.describe do
+            it_should_behave_like "shared stuff"
+          end
+        end.to raise_error(ArgumentError,%q|Could not find shared examples "shared stuff"|)
+      end
+    end
   end
 end

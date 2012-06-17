@@ -15,13 +15,13 @@ module RSpec::Core
         group = ExampleGroup.describe
         group.example("example") {}
         group.run
-        filters.should == [
+        filters.should eq([
           "before all in config",
           "around each in config",
           "before each in config",
           "after each in config",
           "after all in config"
-        ]
+        ])
       end
     end
 
@@ -38,11 +38,11 @@ module RSpec::Core
           group = ExampleGroup.describe(:match => true)
           group.example("example") {}
           group.run
-          filters.should == [
+          filters.should eq([
             "around each in config",
             "before each in config",
             "after each in config"
-          ]
+          ])
         end
       end
 
@@ -58,13 +58,62 @@ module RSpec::Core
         group = ExampleGroup.describe(:match => true)
         group.example("example") {}
         group.run
-        filters.should == [
+        filters.should eq([
           "before all in config",
           "around each in config",
           "before each in config",
           "after each in config",
           "after all in config"
-        ]
+        ])
+      end
+
+      it "runs before|after :all hooks on matching nested example groups" do
+        filters = []
+        RSpec.configure do |c|
+          c.before(:all, :match => true) { filters << :before_all }
+          c.after(:all, :match => true)  { filters << :after_all }
+        end
+
+        example_1_filters = example_2_filters = nil
+
+        group = ExampleGroup.describe "group" do
+          it("example 1") { example_1_filters = filters.dup }
+          describe "subgroup", :match => true do
+            it("example 2") { example_2_filters = filters.dup }
+          end
+        end
+        group.run
+
+        example_1_filters.should be_empty
+        example_2_filters.should eq([:before_all])
+        filters.should eq([:before_all, :after_all])
+      end
+
+      it "runs before|after :all hooks only on the highest level group that matches the filter" do
+        filters = []
+        RSpec.configure do |c|
+          c.before(:all, :match => true) { filters << :before_all }
+          c.after(:all, :match => true)  { filters << :after_all }
+        end
+
+        example_1_filters = example_2_filters = example_3_filters = nil
+
+        group = ExampleGroup.describe "group", :match => true do
+          it("example 1") { example_1_filters = filters.dup }
+          describe "subgroup", :match => true do
+            it("example 2") { example_2_filters = filters.dup }
+            describe "sub-subgroup", :match => true do
+              it("example 3") { example_3_filters = filters.dup }
+            end
+          end
+        end
+        group.run
+
+        example_1_filters.should eq([:before_all])
+        example_2_filters.should eq([:before_all])
+        example_3_filters.should eq([:before_all])
+
+        filters.should eq([:before_all, :after_all])
       end
 
       it "should not be ran if the filter doesn't match the example group's filter" do
@@ -79,7 +128,61 @@ module RSpec::Core
         group = ExampleGroup.describe(:match => true)
         group.example("example") {}
         group.run
-        filters.should == []
+        filters.should eq([])
+      end
+
+      context "when the hook filters apply to individual examples instead of example groups" do
+        let(:each_filters) { [] }
+        let(:all_filters) { [] }
+
+        let(:group) do
+          md = example_metadata
+          ExampleGroup.describe do
+            it("example", md) { }
+          end
+        end
+
+        def filters
+          each_filters + all_filters
+        end
+
+        before(:each) do
+          af, ef = all_filters, each_filters
+
+          RSpec.configure do |c|
+            c.before(:all,  :foo => :bar) { af << "before all in config"}
+            c.around(:each, :foo => :bar) {|example| ef << "around each in config"; example.run}
+            c.before(:each, :foo => :bar) { ef << "before each in config"}
+            c.after(:each,  :foo => :bar) { ef << "after each in config"}
+            c.after(:all,   :foo => :bar) { af << "after all in config"}
+          end
+
+          group.run
+        end
+
+        describe 'an example with matching metadata' do
+          let(:example_metadata) { { :foo => :bar } }
+
+          it "runs the `:each` hooks" do
+            each_filters.should eq([
+              'around each in config',
+              'before each in config',
+              'after each in config'
+            ])
+          end
+
+          it "does not run the `:all` hooks" do
+            all_filters.should be_empty
+          end
+        end
+
+        describe 'an example without matching metadata' do
+          let(:example_metadata) { { :foo => :bazz } }
+
+          it "does not run any of the hooks" do
+            filters.should be_empty
+          end
+        end
       end
     end
 
@@ -96,13 +199,13 @@ module RSpec::Core
         group = ExampleGroup.describe(:one => 1, :two => 2, :three => 3)
         group.example("example") {}
         group.run
-        filters.should == [
+        filters.should eq([
           "before all in config",
           "around each in config",
           "before each in config",
           "after each in config",
           "after all in config"
-        ]
+        ])
       end
 
       it "should not be ran if some hook filters don't match the group's filters" do
@@ -117,7 +220,7 @@ module RSpec::Core
         group = ExampleGroup.describe(:one => 1, :two => 2, :three => 3)
         group.example("example") {}
         group.run
-        filters.should == []
+        filters.should eq([])
       end
     end
   end

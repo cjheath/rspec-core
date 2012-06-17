@@ -8,7 +8,7 @@ Feature: read command line configuration options from files
 
   Options declared in the local file override those in the global file, while
   those declared in RSpec.configure will override any ".rspec" file.
-  
+
   Scenario: color set in .rspec
     Given a file named ".rspec" with:
       """
@@ -30,33 +30,46 @@ Feature: read command line configuration options from files
         end
       end
       """
-    When I run "rspec ./spec/example_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec ./spec/example_spec.rb`
+    Then the examples should all pass
 
-  Scenario: formatter set in RSpec.configure overrides .rspec
-    Given a file named ".rspec" with:
+  Scenario: custom options file
+    Given a file named "my.options" with:
       """
-      --format progress
-      """
-    And a file named "spec/spec_helper.rb" with:
-      """
-      RSpec.configure {|c| c.formatter = 'documentation'}
+      --format documentation
       """
     And a file named "spec/example_spec.rb" with:
       """
-      require "spec_helper"
-
-      describe "formatter" do
-        context "when set with RSpec.configure and in spec.opts" do
-          it "takes the value set in spec.opts" do
-            RSpec.configuration.formatter.should be_an(RSpec::Core::Formatters::DocumentationFormatter)
-          end
+      describe "formatter set in custom options file" do
+        it "sets formatter" do
+          RSpec.configuration.formatters.first.
+            should be_a(RSpec::Core::Formatters::DocumentationFormatter)
         end
       end
       """
-    When I run "rspec ./spec/example_spec.rb"
-    Then the output should contain "1 example, 0 failures"
-    
+    When I run `rspec spec/example_spec.rb --options my.options`
+    Then the examples should all pass
+
+  Scenario: RSpec ignores ./.rspec when custom options file is used
+    Given a file named "my.options" with:
+      """
+      --format documentation
+      """
+    And a file named ".rspec" with:
+      """
+      --color
+      """
+    And a file named "spec/example_spec.rb" with:
+      """
+      describe "custom options file" do
+        it "causes .rspec to be ignored" do
+          RSpec.configuration.color_enabled.should be_false
+        end
+      end
+      """
+    When I run `rspec spec/example_spec.rb --options my.options`
+    Then the examples should all pass
+
   Scenario: using ERB in .rspec
     Given a file named ".rspec" with:
       """
@@ -66,9 +79,9 @@ Feature: read command line configuration options from files
       """
       describe "formatter" do
         it "is set to documentation" do
-          RSpec.configuration.formatter.should be_an(RSpec::Core::Formatters::DocumentationFormatter)
+          RSpec.configuration.formatters.first.should be_an(RSpec::Core::Formatters::DocumentationFormatter)
         end
       end
       """
-    When I run "rspec ./spec/example_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec ./spec/example_spec.rb`
+    Then the examples should all pass

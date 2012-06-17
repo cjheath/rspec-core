@@ -1,26 +1,42 @@
-require 'rspec/core'
-require 'autotest/rspec2'
+require 'rubygems'
 
-Dir['./spec/support/**/*.rb'].map {|f| require f}
+begin
+  require 'spork'
+rescue LoadError
+  module Spork
+    def self.prefork
+      yield
+    end
 
-class NullObject
-  private
-  def method_missing(method, *args, &block)
-    # ignore
+    def self.each_run
+      yield
+    end
   end
 end
 
-def sandboxed(&block)
-  begin
+Spork.prefork do
+  require 'rspec/autorun'
+  require 'autotest/rspec2'
+  require 'aruba/api'
+  require 'fakefs/spec_helpers'
+
+  Dir['./spec/support/**/*.rb'].map {|f| require f}
+
+  class NullObject
+    private
+    def method_missing(method, *args, &block)
+      # ignore
+    end
+  end
+
+  def sandboxed(&block)
     @orig_config = RSpec.configuration
     @orig_world  = RSpec.world
     new_config = RSpec::Core::Configuration.new
-    new_config.include(RSpec::Matchers)
     new_world  = RSpec::Core::World.new(new_config)
     RSpec.instance_variable_set(:@configuration, new_config)
     RSpec.instance_variable_set(:@world, new_world)
     object = Object.new
-    object.extend(RSpec::Core::ObjectExtensions)
     object.extend(RSpec::Core::SharedExampleGroup)
 
     (class << RSpec::Core::ExampleGroup; self; end).class_eval do
@@ -45,27 +61,38 @@ def sandboxed(&block)
     RSpec.instance_variable_set(:@configuration, @orig_config)
     RSpec.instance_variable_set(:@world, @orig_world)
   end
-end
 
-def in_editor?
-  ENV.has_key?('TM_MODE') || ENV.has_key?('EMACS') || ENV.has_key?('VIM')
-end
-
-RSpec.configure do |c|
-  c.color_enabled = !in_editor?
-  c.filter_run :focused => true
-  c.run_all_when_everything_filtered = true
-  c.filter_run_excluding :ruby => lambda {|version|
-    case version.to_s
-    when "!jruby"
-      RUBY_ENGINE != "jruby"
-    when /^> (.*)/
-      !(RUBY_VERSION.to_s > $1)
-    else
-      !(RUBY_VERSION.to_s =~ /^#{version.to_s}/)
-    end
-  }
-  c.around do |example|
-    sandboxed { example.run }
+  def in_editor?
+    ENV.has_key?('TM_MODE') || ENV.has_key?('EMACS') || ENV.has_key?('VIM')
   end
+
+  RSpec.configure do |c|
+    # structural
+    c.alias_it_behaves_like_to 'it_has_behavior'
+    c.around {|example| sandboxed { example.run }}
+    c.include(RSpecHelpers)
+    c.include Aruba::Api, :example_group => {
+      :file_path => /spec\/command_line/
+    }
+
+    # runtime options
+    c.treat_symbols_as_metadata_keys_with_true_values = true
+    c.color = !in_editor?
+    c.filter_run :focus
+    c.include FakeFS::SpecHelpers, :fakefs
+    c.run_all_when_everything_filtered = true
+    c.filter_run_excluding :ruby => lambda {|version|
+      case version.to_s
+      when "!jruby"
+        RUBY_ENGINE == "jruby"
+      when /^> (.*)/
+        !(RUBY_VERSION.to_s > $1)
+      else
+        !(RUBY_VERSION.to_s =~ /^#{version.to_s}/)
+      end
+    }
+  end
+end
+
+Spork.each_run do
 end

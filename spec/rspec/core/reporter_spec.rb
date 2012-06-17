@@ -10,7 +10,7 @@ module RSpec::Core
       %w[start_dump dump_pending dump_failures dump_summary close].each do |message|
         it "sends #{message} to the formatter(s)" do
           formatter.should_receive(message)
-          reporter.abort
+          reporter.abort(nil)
         end
       end
     end
@@ -30,24 +30,40 @@ module RSpec::Core
       it "passes example_group_started and example_group_finished messages to that formatter in that order" do
         order = []
 
-        formatter = stub("formatter")
+        formatter = stub("formatter").as_null_object
         formatter.stub(:example_group_started) { |group| order << "Started: #{group.description}" }
         formatter.stub(:example_group_finished) { |group| order << "Finished: #{group.description}" }
 
         group = ExampleGroup.describe("root")
-        group.describe("context 1")
-        group.describe("context 2")
+        group.describe("context 1") do
+          example("ignore") {}
+        end
+        group.describe("context 2") do
+          example("ignore") {}
+        end
 
         group.run(Reporter.new(formatter))
 
-        order.should == [
+        order.should eq([
            "Started: root",
            "Started: context 1",
            "Finished: context 1",
            "Started: context 2",
            "Finished: context 2",
            "Finished: root"
-        ]
+        ])
+      end
+    end
+
+    context "given an example group with no examples" do
+      it "does not pass example_group_started or example_group_finished to formatter" do
+        formatter = stub("formatter").as_null_object
+        formatter.should_not_receive(:example_group_started)
+        formatter.should_not_receive(:example_group_finished)
+
+        group = ExampleGroup.describe("root")
+
+        group.run(Reporter.new(formatter))
       end
     end
 
@@ -64,6 +80,23 @@ module RSpec::Core
         end
 
         reporter.example_started(example)
+      end
+    end
+
+    describe "#report" do
+      it "supports one arg (count)" do
+        Reporter.new.report(1) {}
+      end
+
+      it "supports two args (count, seed)" do
+        Reporter.new.report(1, 2) {}
+      end
+
+      it "yields itself" do
+        reporter = Reporter.new
+        yielded = nil
+        reporter.report(3) {|r| yielded = r}
+        yielded.should eq(reporter)
       end
     end
   end

@@ -1,4 +1,5 @@
 require 'rspec/core/formatters/helpers'
+require 'stringio'
 
 module RSpec
   module Core
@@ -87,6 +88,9 @@ module RSpec
         def dump_pending
         end
 
+        def seed(number)
+        end
+
         # This method is invoked at the very end. Allows the formatter to clean up, like closing open streams.
         def close
           restore_sync_output
@@ -95,6 +99,11 @@ module RSpec
         def format_backtrace(backtrace, example)
           return "" unless backtrace
           return backtrace if example.metadata[:full_backtrace] == true
+
+          if at_exit_index = backtrace.index(RSpec::Core::Runner::AT_EXIT_HOOK_BACKTRACE_LINE)
+            backtrace = backtrace[0, at_exit_index]
+          end
+
           cleansed = backtrace.map { |line| backtrace_line(line) }.compact
           cleansed.empty? ? backtrace : cleansed
         end
@@ -107,10 +116,7 @@ module RSpec
 
         def backtrace_line(line)
           return nil if configuration.cleaned_from_backtrace?(line)
-          line = line.sub(File.expand_path("."), ".")
-          line = line.sub(/\A([^:]+:\d+)$/, '\\1')
-          return nil if line == '-e:1'
-          line
+          RSpec::Core::Metadata::relative_path(line)
         end
 
         def read_failed_line(exception, example)
@@ -121,18 +127,18 @@ module RSpec
           file_path, line_number = matching_line.match(/(.+?):(\d+)(|:\d+)/)[1..2]
 
           if File.exist?(file_path)
-            open(file_path, 'r') { |f| f.readlines[line_number.to_i - 1] }
+            File.readlines(file_path)[line_number.to_i - 1]
           else
             "Unable to find #{file_path} to read failed line"
           end
         end
 
         def find_failed_line(backtrace, path)
+          path = File.expand_path(path)
           backtrace.detect { |line|
             match = line.match(/(.+?):(\d+)(|:\d+)/)
             match && match[1].downcase == path.downcase
           }
-
         end
 
         def start_sync_output

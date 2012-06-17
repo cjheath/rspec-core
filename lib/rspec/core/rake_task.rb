@@ -1,5 +1,3 @@
-#!/usr/bin/env ruby
-
 require 'rspec/core'
 require 'rspec/core/deprecation'
 require 'rake'
@@ -8,6 +6,7 @@ require 'rake/tasklib'
 module RSpec
   module Core
     class RakeTask < ::Rake::TaskLib
+      include ::Rake::DSL if defined?(::Rake::DSL)
 
       # Name of task.
       #
@@ -21,29 +20,26 @@ module RSpec
       #   'spec/**/*_spec.rb'
       attr_accessor :pattern
 
-      # By default, if there is a Gemfile, the generated command will include
-      # 'bundle exec'. Set this to true to ignore the presence of a Gemfile, and
-      # not add 'bundle exec' to the command.
-      #
-      # default:
-      #   false
-      attr_accessor :skip_bundler
+      # @deprecated
+      # Has no effect. The rake task now checks ENV['BUNDLE_GEMFILE'] instead.
+      def skip_bundler=(*)
+        RSpec.deprecate("RSpec::Core::RakeTask#skip_bundler=")
+      end
 
-      # Name of Gemfile to use
-      #
-      # default:
-      #   Gemfile
-      attr_accessor :gemfile
+      # @deprecated
+      # Has no effect. The rake task now checks ENV['BUNDLE_GEMFILE'] instead.
+      def gemfile=(*)
+        RSpec.deprecate("RSpec::Core::RakeTask#gemfile=", 'ENV["BUNDLE_GEMFILE"]')
+      end
 
-      # Deprecated. Use ruby_opts="-w" instead.
+      # @deprecated
+      # Use ruby_opts="-w" instead.
       #
       # When true, requests that the specs be run with the warning flag set.
       # e.g. "ruby -w"
       #
       # default:
       #   false
-      attr_reader :warning
-
       def warning=(true_or_false)
         RSpec.deprecate("RSpec::Core::RakeTask#warning=", 'ruby_opts="-w"')
         @warning = true_or_false
@@ -101,7 +97,8 @@ module RSpec
       #   nil
       attr_accessor :rspec_opts
 
-      # Deprecated. Use rspec_opts instead.
+      # @deprecated
+      # Use rspec_opts instead.
       #
       # Command line options to pass to rspec.
       #
@@ -115,15 +112,14 @@ module RSpec
       def initialize(*args)
         @name = args.shift || :spec
         @pattern, @rcov_path, @rcov_opts, @ruby_opts, @rspec_opts = nil, nil, nil, nil, nil
-        @warning, @rcov, @skip_bundler = false, false, false
+        @warning, @rcov = false, false
         @verbose, @fail_on_error = true, true
-        @gemfile = 'Gemfile'
 
         yield self if block_given?
 
         @rcov_path  ||= 'rcov'
         @rspec_path ||= 'rspec'
-        @pattern    ||= './spec/**/*_spec.rb'
+        @pattern    ||= './spec{,/*/**}/*_spec.rb'
 
         desc("Run RSpec code examples") unless ::Rake.application.last_comment
 
@@ -133,11 +129,12 @@ module RSpec
               puts "No examples matching #{pattern} could be found"
             else
               begin
-                ruby(spec_command)
+                puts spec_command if verbose
+                success = system(spec_command)
               rescue
                 puts failure_message if failure_message
-                raise("ruby #{spec_command} failed") if fail_on_error
               end
+              raise("#{spec_command} failed") if fail_on_error unless success
             end
           end
         end
@@ -145,31 +142,26 @@ module RSpec
 
     private
 
-      def files_to_run # :nodoc:
+      def files_to_run
         if ENV['SPEC']
           FileList[ ENV['SPEC'] ]
         else
-          FileList[ pattern ].map { |f| %["#{f}"] }
+          FileList[ pattern ].map { |f| f.gsub(/"/, '\"').gsub(/'/, "\\\\'") }
         end
       end
 
       def spec_command
         @spec_command ||= begin
-                            cmd_parts = [ruby_opts]
-                            cmd_parts << "-w" if warning?
-                            cmd_parts << "-S"
-                            cmd_parts << "bundle exec" if gemfile? unless skip_bundler
-                            cmd_parts << runner
-                            if rcov
-                              cmd_parts << ["-Ispec:lib", rcov_opts]
-                            else
-                              cmd_parts << rspec_opts
-                            end
+                            cmd_parts = []
+                            cmd_parts << RUBY
+                            cmd_parts << ruby_opts
+                            cmd_parts << "-w" if @warning
+                            cmd_parts << "-S" << runner
+                            cmd_parts << "-Ispec:lib" << rcov_opts if rcov
                             cmd_parts << files_to_run
-                            if rcov && rspec_opts
-                              cmd_parts << ["--",  rspec_opts]
-                            end
-                            cmd_parts.flatten.compact.reject(&blank).join(" ")
+                            cmd_parts << "--" if rcov && rspec_opts
+                            cmd_parts << rspec_opts
+                            cmd_parts.flatten.reject(&blank).join(" ")
                           end
       end
 
@@ -179,18 +171,9 @@ module RSpec
         rcov ? rcov_path : rspec_path
       end
 
-      def warning?
-        warning
-      end
-
       def blank
-        lambda {|s| s == ""}
+        lambda {|s| s.nil? || s == ""}
       end
-
-      def gemfile?
-        File.exist?(gemfile)
-      end
-
     end
   end
 end

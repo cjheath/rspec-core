@@ -1,7 +1,7 @@
-module RSpec # :nodoc:
-  module Core # :nodoc:
-    module Version # :nodoc:
-      STRING = '2.4.0.pre'
+module RSpec
+  module Core
+    module Version
+      STRING = '2.10.1'
     end
   end
 end

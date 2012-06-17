@@ -16,14 +16,13 @@ module RSpec
 
         let(:generated_html) do
           options = RSpec::Core::ConfigurationOptions.new(
-            %w[spec/rspec/core/resources/formatter_specs.rb --format textmate]
+            %w[spec/rspec/core/resources/formatter_specs.rb --format textmate --order default]
           )
           options.parse_options
           err, out = StringIO.new, StringIO.new
           command_line = RSpec::Core::CommandLine.new(options)
           command_line.run(err, out)
-          out.string.gsub /\d+\.\d+ seconds/, 'x seconds'
-
+          out.string.gsub(/\d+\.\d+(s| seconds)/, "n.nnnn\\1")
         end
 
         let(:expected_html) do
@@ -41,13 +40,13 @@ module RSpec
 
         # Uncomment this group temporarily in order to overwrite the expected
         # with actual.  Use with care!!!
-        # describe "file generator" do
-          # it "generates a new comparison file" do
-            # Dir.chdir(root) do
-              # File.open(expected_file, 'w') {|io| io.write(generated_html)}
-            # end
-          # end
-        # end
+        describe "file generator", :if => ENV['GENERATE'] do
+          it "generates a new comparison file" do
+            Dir.chdir(root) do
+              File.open(expected_file, 'w') {|io| io.write(generated_html)}
+            end
+          end
+        end
 
         it "produces HTML identical to the one we designed manually" do
           Dir.chdir(root) do
@@ -58,7 +57,7 @@ module RSpec
             expected_doc = Nokogiri::HTML(expected_html)
             expected_doc.search("div.backtrace").remove
 
-            actual_doc.inner_html.should == expected_doc.inner_html
+            actual_doc.inner_html.should eq(expected_doc.inner_html)
 
             backtrace_lines.each do |backtrace_line|
               backtrace_line['href'].should include("txmt://open?url=")

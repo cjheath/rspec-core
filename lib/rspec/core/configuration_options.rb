@@ -1,13 +1,10 @@
-require 'optparse'
-# http://www.ruby-doc.org/stdlib/libdoc/optparse/rdoc/classes/OptionParser.html
+require 'erb'
+require 'shellwords'
 
 module RSpec
   module Core
-
+    # @private
     class ConfigurationOptions
-      LOCAL_OPTIONS_FILE  = ".rspec"
-      GLOBAL_OPTIONS_FILE = File.join(File.expand_path("~"), ".rspec")
-
       attr_reader :options
 
       def initialize(args)
@@ -15,84 +12,117 @@ module RSpec
       end
 
       def configure(config)
-        keys = options.keys
-        keys.unshift(:requires) if keys.delete(:requires)
-        keys.unshift(:libs)     if keys.delete(:libs)
-        keys.each do |key|
-          config.send("#{key}=", options[key])
+        formatters = options.delete(:formatters)
+
+        config.filter_manager = filter_manager
+
+        order(options.keys, :libs, :requires, :default_path, :pattern).each do |key|
+          force?(key) ? config.force(key => options[key]) : config.send("#{key}=", options[key])
+        end
+
+        formatters.each {|pair| config.add_formatter(*pair) } if formatters
+      end
+
+      def parse_options
+        @options ||= extract_filters_from(*all_configs).inject do |merged, pending|
+          merged.merge(pending) { |key, oldval, newval|
+            MERGED_OPTIONS.include?(key) ? oldval + newval : newval
+          }
         end
       end
 
       def drb_argv
-        argv = []
-        argv << "--color"     if options[:color_enabled]
-        argv << "--profile"   if options[:profile_examples]
-        argv << "--backtrace" if options[:full_backtrace]
-        argv << "--tty"       if options[:tty]
-        argv << "--fail-fast"  if options[:fail_fast]
-        argv << "--format"       << options[:formatter]               if options[:formatter]
-        argv << "--line_number"  << options[:line_number]             if options[:line_number]
-        argv << "--example"      << options[:full_description].source if options[:full_description]
-        (options[:libs] || []).each do |path|
-          argv << "-I" << path
-        end
-        (options[:requires] || []).each do |path|
-          argv << "--require" << path
-        end
-        argv + options[:files_or_directories_to_run]
+        DrbOptions.new(options, filter_manager).options
       end
 
-      def parse_options
-        @options = begin
-                     command_line_options = parse_command_line_options
-                     local_options        = parse_local_options(command_line_options)
-                     global_options       = parse_global_options
-                     env_options          = parse_env_options
-
-                     [global_options, local_options, command_line_options, env_options].inject do |merged, options|
-                       merged.merge(options)
-                     end
-                   end
+      def filter_manager
+        @filter_manager ||= RSpec::configuration.filter_manager
       end
 
     private
 
-      def parse_env_options
-        ENV["SPEC_OPTS"] ? Parser.parse!(ENV["SPEC_OPTS"].split) : {}
+      NON_FORCED_OPTIONS = [
+        :debug, :requires, :libs, :profile, :drb, :files_or_directories_to_run,
+        :line_numbers, :full_description, :full_backtrace, :tty
+      ].to_set
+
+      MERGED_OPTIONS = [:requires, :libs].to_set
+
+      def force?(key)
+        !NON_FORCED_OPTIONS.include?(key)
       end
 
-      def parse_command_line_options
-        options = Parser.parse!(@args)
-        options[:files_or_directories_to_run] = @args
-        options
+      def order(keys, *ordered)
+        ordered.reverse.each do |key|
+          keys.unshift(key) if keys.delete(key)
+        end
+        keys
       end
 
-      def parse_local_options(options)
-        parse_options_file(local_options_file(options))
+      def extract_filters_from(*configs)
+        configs.compact.each do |config|
+          filter_manager.include config.delete(:inclusion_filter) if config.has_key?(:inclusion_filter)
+          filter_manager.exclude config.delete(:exclusion_filter) if config.has_key?(:exclusion_filter)
+        end
       end
 
-      def parse_global_options
-        parse_options_file(GLOBAL_OPTIONS_FILE)
+      def all_configs
+        @all_configs ||= file_options << command_line_options << env_options
       end
 
-      def parse_options_file(path)
+      def file_options
+        custom_options_file ? [custom_options] : [global_options, local_options]
+      end
+
+      def env_options
+        ENV["SPEC_OPTS"] ? Parser.parse!(Shellwords.split(ENV["SPEC_OPTS"])) : {}
+      end
+
+      def command_line_options
+        @command_line_options ||= Parser.parse!(@args).merge :files_or_directories_to_run => @args
+      end
+
+      def custom_options
+        options_from(custom_options_file)
+      end
+
+      def local_options
+        @local_options ||= options_from(local_options_file)
+      end
+
+      def global_options
+        @global_options ||= options_from(global_options_file)
+      end
+
+      def options_from(path)
         Parser.parse(args_from_options_file(path))
       end
-      
+
       def args_from_options_file(path)
-        return [] unless File.exist?(path)
+        return [] unless path && File.exist?(path)
         config_string = options_file_as_erb_string(path)
-        config_string.split(/\n+/).map {|l| l.split}.flatten
-      end
-      
-      def options_file_as_erb_string(path)
-        require 'erb'
-        ERB.new(IO.read(path)).result(binding)
+        config_string.split(/\n+/).map {|l| l.shellsplit}.flatten
       end
 
-      def local_options_file(options)
-        return options[:options_file] if options[:options_file]
-        LOCAL_OPTIONS_FILE
+      def options_file_as_erb_string(path)
+        ERB.new(File.read(path)).result(binding)
+      end
+
+      def custom_options_file
+        command_line_options[:custom_options_file]
+      end
+
+      def local_options_file
+        ".rspec"
+      end
+
+      def global_options_file
+        begin
+          File.join(File.expand_path("~"), ".rspec")
+        rescue ArgumentError
+          warn "Unable to find ~/.rspec because the HOME environment variable is not set"
+          nil
+        end
       end
     end
   end

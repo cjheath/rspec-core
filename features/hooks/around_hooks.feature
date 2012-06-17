@@ -9,6 +9,13 @@ Feature: around hooks
   example, if your database library offers a transaction method that receives
   a block, you can use an around hook as described in the first scenario:
 
+  WARNING: around hooks do not share state with the example the way before and
+  after hooks do. This means that you can not share instance variables between
+  around hooks and examples.
+
+  Also, mock frameworks are set up and torn down within the context of running
+  the example, so you can not interact with them directly in around hooks.
+
   Scenario: use the example as a proc within the block passed to around()
     Given a file named "example_spec.rb" with:
       """
@@ -30,7 +37,7 @@ Feature: around hooks
         end
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain:
       """
       open transaction
@@ -53,7 +60,7 @@ Feature: around hooks
         end
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain:
       """
       around each before
@@ -74,7 +81,7 @@ Feature: around hooks
         end
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain "this should show up in the output"
 
   Scenario: define a global around hook
@@ -94,7 +101,7 @@ Feature: around hooks
         end
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain:
       """
       around each before
@@ -125,7 +132,7 @@ Feature: around hooks
         end
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain:
       """
       around each before
@@ -158,7 +165,7 @@ Feature: around hooks
         end
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec --format progress example_spec.rb`
     Then the output should contain:
       """
       before all
@@ -189,10 +196,10 @@ Feature: around hooks
         end
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain "1 example, 0 failure"
 
-  Scenario: implicitly pending examples are detected as Not Yet Implemented
+  Scenario: implicitly pending examples are detected as Not yet implemented
     Given a file named "example_spec.rb" with:
       """
       describe "implicit pending example" do
@@ -200,16 +207,16 @@ Feature: around hooks
           example.run
         end
 
-        it "should be detected as Not Yet Implemented"
+        it "should be detected as Not yet implemented"
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain "1 example, 0 failures, 1 pending"
     And the output should contain:
       """
       Pending:
-        implicit pending example should be detected as Not Yet Implemented
-          # Not Yet Implemented
+        implicit pending example should be detected as Not yet implemented
+          # Not yet implemented
       """
 
 
@@ -226,7 +233,7 @@ Feature: around hooks
         end
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain "1 example, 0 failures, 1 pending"
     And the output should contain:
       """
@@ -252,11 +259,11 @@ Feature: around hooks
 
         it "they should all be run" do
           puts "in the example"
-          1.should == 1
+          1.should eq(1)
         end
       end
       """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain "1 example, 0 failure"
     And the output should contain:
       """
@@ -316,7 +323,7 @@ Feature: around hooks
       end
     end
     """
-    When I run "rspec example_spec.rb"
+    When I run `rspec example_spec.rb`
     Then the output should contain "1 example, 0 failure"
     And the output should contain:
     """

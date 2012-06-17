@@ -20,25 +20,46 @@ RSpec::Matchers.define :map_specs do |specs|
   end
 end
 
-RSpec::Matchers.define :have_interface_for do |method|
-  match do |object|
-    @method = method
-    @object = object
-    object.respond_to?(method) && actual_arity == @expected_arity
+RSpec::Matchers.define :fail_with do |exception_klass|
+  match do |example|
+    failure_reason(example, exception_klass).nil?
   end
 
-  chain :with do |arity|
-    @expected_arity = arity
+  failure_message_for_should do |example|
+    "expected example to fail with a #{exception_klass} exception, but #{failure_reason(example, exception_klass)}"
   end
 
-  chain(:argument) {}
-  chain(:arguments) {}
+  def failure_reason(example, exception_klass)
+    result = example.metadata[:execution_result]
+    case
+      when example.metadata[:pending] then "was pending"
+      when result[:status] != 'failed' then result[:status]
+      when !result[:exception].is_a?(exception_klass) then "failed with a #{result[:exception].class}"
+      else nil
+    end
+  end
+end
 
-  failure_message_for_should do
-    "#{@object} should have method :#{@method} with #{@expected_arity} argument(s), but it had #{actual_arity}"
+RSpec::Matchers.define :pass do
+  match do |example|
+    failure_reason(example).nil?
   end
 
-  def actual_arity
-    @object.method(@method).arity
+  failure_message_for_should do |example|
+    "expected example to pass, but #{failure_reason(example)}"
   end
+
+  def failure_reason(example)
+    result = example.metadata[:execution_result]
+    case
+      when example.metadata[:pending] then "was pending"
+      when result[:status] != 'passed' then result[:status]
+      else nil
+    end
+  end
+end
+
+RSpec::Matchers.module_eval do
+  alias_method :have_failed_with, :fail_with
+  alias_method :have_passed, :pass
 end

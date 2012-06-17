@@ -12,6 +12,6 @@ Feature: described class
         end
       end
       """
-    When I run "rspec ./spec/example_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec spec/example_spec.rb`
+    Then the example should pass
 

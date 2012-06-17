@@ -10,10 +10,10 @@ Feature: pending examples
         it "is a pending example"
       end
       """
-    When I run "rspec example_without_block_spec.rb"
+    When I run `rspec example_without_block_spec.rb`
     Then the exit status should be 0
     And the output should contain "1 example, 0 failures, 1 pending"
-    And the output should contain "Not Yet Implemented"
+    And the output should contain "Not yet implemented"
     And the output should contain "example_without_block_spec.rb:2"
 
   Scenario: pending any arbitary reason, with no block
@@ -26,7 +26,7 @@ Feature: pending examples
         end
       end
       """
-    When I run "rspec pending_without_block_spec.rb"
+    When I run `rspec pending_without_block_spec.rb`
     Then the exit status should be 0
     And the output should contain "1 example, 0 failures, 1 pending"
     And the output should contain:
@@ -48,7 +48,7 @@ Feature: pending examples
         end
       end
       """
-    When I run "rspec pending_with_failing_block_spec.rb"
+    When I run `rspec pending_with_failing_block_spec.rb`
     Then the exit status should be 0
     And the output should contain "1 example, 0 failures, 1 pending"
     And the output should contain:
@@ -70,29 +70,42 @@ Feature: pending examples
         end
       end
       """
-    When I run "rspec pending_with_passing_block_spec.rb"
+    When I run `rspec pending_with_passing_block_spec.rb`
     Then the exit status should not be 0
     And the output should contain "1 example, 1 failure"
     And the output should contain "FIXED"
     And the output should contain "Expected pending 'something else getting finished' to fail. No Error was raised."
     And the output should contain "pending_with_passing_block_spec.rb:3"
 
-  Scenario: temporarily pending by changing "it" to "xit"
-    Given a file named "pending_with_xit_spec.rb" with:
+  Scenario: temporarily pending by prefixing `it`, `specify`, or `example` with an x
+    Given a file named "temporarily_pending_spec.rb" with:
       """
       describe "an example" do
         xit "is pending using xit" do
-          true.should be(true)
+        end
+
+        xspecify "is pending using xspecify" do
+        end
+
+        xexample "is pending using xexample" do
         end
       end
       """
-    When I run "rspec pending_with_xit_spec.rb"
+    When I run `rspec temporarily_pending_spec.rb`
     Then the exit status should be 0
-    And the output should contain "1 example, 0 failures, 1 pending"
+    And the output should contain "3 examples, 0 failures, 3 pending"
     And the output should contain:
       """
       Pending:
         an example is pending using xit
+          # Temporarily disabled with xit
+          # ./temporarily_pending_spec.rb:2
+        an example is pending using xspecify
+          # Temporarily disabled with xspecify
+          # ./temporarily_pending_spec.rb:5
+        an example is pending using xexample
+          # Temporarily disabled with xexample
+          # ./temporarily_pending_spec.rb:8
       """
 
   Scenario: example with no docstring and pending method using documentation formatter
@@ -100,21 +113,21 @@ Feature: pending examples
       """
       describe "an example" do
         it "checks something" do
-          (3+4).should == 7
+          (3+4).should eq(7)
         end
         specify do
           pending
         end
       end
       """
-    When I run "rspec pending_with_no_docstring_spec.rb --format documentation"
+    When I run `rspec pending_with_no_docstring_spec.rb --format documentation`
     Then the exit status should be 0
     And the output should contain "2 examples, 0 failures, 1 pending"
     And the output should contain:
       """
       an example
         checks something
-         (PENDING: No reason given)
+        example at ./pending_with_no_docstring_spec.rb:5 (PENDING: No reason given)
       """
 
   Scenario: pending with no docstring using documentation formatter
@@ -122,21 +135,21 @@ Feature: pending examples
       """
       describe "an example" do
         it "checks something" do
-          (3+4).should == 7
+          (3+4).should eq(7)
         end
         pending do
-          "string".reverse.should == "gnirts"
+          "string".reverse.should eq("gnirts")
         end
       end
       """
-    When I run "rspec pending_with_no_docstring_spec.rb --format documentation"
+    When I run `rspec pending_with_no_docstring_spec.rb --format documentation`
     Then the exit status should be 0
     And the output should contain "2 examples, 0 failures, 1 pending"
     And the output should contain:
       """
       an example
         checks something
-         (PENDING: Not Yet Implemented)
+        example at ./pending_with_no_docstring_spec.rb:5 (PENDING: No reason given)
       """
 
   Scenario: conditionally pending examples
@@ -182,7 +195,7 @@ Feature: pending examples
         end
       end
       """
-    When I run "rspec ./conditionally_pending_spec.rb"
+    When I run `rspec ./conditionally_pending_spec.rb`
     Then the output should contain "8 examples, 4 failures, 2 pending"
     And the output should contain:
       """

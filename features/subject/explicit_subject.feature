@@ -1,7 +1,11 @@
 Feature: explicit subject
 
-  Use subject() in the group scope to explicitly define the value that is
-  returned by the subject() method in the example scope.
+  Use `subject` in the group scope to explicitly define the value that is
+  returned by the `subject` method in the example scope.
+
+  Note that while the examples below demonstrate how `subject` can be used as a
+  user-facing concept, we recommend that you reserve it for support of custom
+  matchers and/or extension libraries that hide its use from examples.
 
   Scenario: subject in top level group
     Given a file named "top_level_subject_spec.rb" with:
@@ -13,8 +17,8 @@ Feature: explicit subject
         end
       end
       """
-    When I run "rspec top_level_subject_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec top_level_subject_spec.rb`
+    Then the examples should all pass
 
   Scenario: subject in a nested group
     Given a file named "nested_subject_spec.rb" with:
@@ -28,8 +32,8 @@ Feature: explicit subject
         end
       end
       """
-    When I run "rspec nested_subject_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec nested_subject_spec.rb`
+    Then the examples should all pass
 
   Scenario: access subject from before block
     Given a file named "top_level_subject_spec.rb" with:
@@ -42,8 +46,8 @@ Feature: explicit subject
         end
       end
       """
-    When I run "rspec top_level_subject_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec top_level_subject_spec.rb`
+    Then the examples should all pass
 
   Scenario: invoke helper method from subject block
     Given a file named "helper_subject_spec.rb" with:
@@ -58,8 +62,8 @@ Feature: explicit subject
         end
       end
       """
-    When I run "rspec helper_subject_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec helper_subject_spec.rb`
+    Then the examples should all pass
 
   Scenario: subject block is invoked at most once per example
     Given a file named "nil_subject_spec.rb" with:
@@ -74,5 +78,5 @@ Feature: explicit subject
         end
       end
       """
-    When I run "rspec nil_subject_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec nil_subject_spec.rb`
+    Then the examples should all pass

@@ -6,33 +6,33 @@ Gem::Specification.new do |s|
   s.name        = "rspec-core"
   s.version     = RSpec::Core::Version::STRING
   s.platform    = Gem::Platform::RUBY
-  s.authors     = ["Chad Humphries", "David Chelimsky"]
-  s.email       = "dchelimsky@gmail.com;chad.humphries@gmail.com"
+  s.license     = "MIT"
+  s.authors     = ["Steven Baker", "David Chelimsky", "Chad Humphries"]
+  s.email       = "rspec-users@rubyforge.org"
   s.homepage    = "http://github.com/rspec/rspec-core"
   s.summary     = "rspec-core-#{RSpec::Core::Version::STRING}"
-  s.description = "RSpec runner and example groups"
+  s.description = "BDD for Ruby. RSpec runner and example groups."
 
-  s.rubygems_version   = "1.3.7"
   s.rubyforge_project  = "rspec"
-  s.default_executable = "rspec"
 
-  s.files            = `git ls-files`.split("\n")
+  s.files            = `git ls-files -- lib/*`.split("\n")
+  s.files           += %w[README.md License.txt Changelog.md .yardopts .document]
   s.test_files       = `git ls-files -- {spec,features}/*`.split("\n")
-  s.executables      = `git ls-files -- bin/*`.split("\n").map{ |f| File.basename(f) }
-  s.extra_rdoc_files = [ "README.md" ]
+  s.bindir           = 'exe'
+  s.executables      = `git ls-files -- exe/*`.split("\n").map{ |f| File.basename(f) }
   s.rdoc_options     = ["--charset=UTF-8"]
   s.require_path     = "lib"
 
-  s.post_install_message = %Q{**************************************************
+  s.add_development_dependency "rake",     "~> 0.9.2"
+  s.add_development_dependency "cucumber", "~> 1.1.9"
+  s.add_development_dependency "aruba",    "~> 0.4.11"
 
-  Thank you for installing #{s.summary}
+  s.add_development_dependency "ZenTest",  "4.6.2"
+  s.add_development_dependency "nokogiri", "1.5.2"
+  s.add_development_dependency "fakefs",   "0.4.0"
+  s.add_development_dependency "syntax",   "1.0.0"
 
-  Please be sure to look at the upgrade instructions to see what might have
-  changed since the last release:
-
-  http://github.com/rspec/rspec-core/blob/master/Upgrade.markdown
-
-**************************************************
-}
+  s.add_development_dependency "mocha",    "~> 0.10.5"
+  s.add_development_dependency "rr",       "~> 1.0.4"
+  s.add_development_dependency "flexmock", "~> 0.9.0"
 end
-

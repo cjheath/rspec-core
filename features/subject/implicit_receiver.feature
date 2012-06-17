@@ -1,6 +1,6 @@
 Feature: implicit receiver
 
-  When should() is called in an example without an explicit receiver, it is
+  When `should` is called in an example without an explicit receiver, it is
   invoked against the subject (explicit or implicit).
 
   Scenario: implicit subject
@@ -12,8 +12,8 @@ Feature: implicit receiver
         end
       end
       """
-    When I run "rspec example_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec example_spec.rb`
+    Then the examples should all pass
 
   Scenario: explicit subject
     Given a file named "example_spec.rb" with:
@@ -25,5 +25,5 @@ Feature: implicit receiver
         end
       end
       """
-    When I run "rspec example_spec.rb"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec example_spec.rb`
+    Then the examples should all pass

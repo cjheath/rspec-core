@@ -12,19 +12,32 @@ describe "#let" do
     end.new
   end
 
+  let(:nil_value) do
+    @nil_value_count += 1
+    nil
+  end
+
   it "generates an instance method" do
-    counter.count.should == 1
+    counter.count.should eq(1)
   end
 
   it "caches the value" do
-    counter.count.should == 1
-    counter.count.should == 2
+    counter.count.should eq(1)
+    counter.count.should eq(2)
+  end
+
+  it "caches a nil value" do
+    @nil_value_count = 0
+    nil_value
+    nil_value
+
+    @nil_value_count.should eq(1)
   end
 end
 
 describe "#let!" do
   let!(:creator) do
-    class Creator
+    Class.new do
       @count = 0
       def self.count
         @count += 1
@@ -33,10 +46,10 @@ describe "#let!" do
   end
 
   it "evaluates the value non-lazily" do
-    lambda { Creator.count }.should_not raise_error
+    lambda { creator.count }.should_not raise_error
   end
 
   it "does not interfere between tests" do
-    Creator.count.should == 1
+    creator.count.should eq(1)
   end
 end

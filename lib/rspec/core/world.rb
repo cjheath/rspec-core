@@ -2,20 +2,32 @@ module RSpec
   module Core
     class World
 
-      attr_reader :example_groups, :filtered_examples, :wants_to_quit
-      attr_writer :wants_to_quit
+      include RSpec::Core::Hooks
+
+      attr_reader :example_groups, :shared_example_groups, :filtered_examples
+      attr_accessor :wants_to_quit
 
       def initialize(configuration=RSpec.configuration)
         @configuration = configuration
-        @example_groups = []
+        @example_groups = [].extend(Extensions::Ordered)
+        @shared_example_groups = {}
         @filtered_examples = Hash.new { |hash,group|
           hash[group] = begin
             examples = group.examples.dup
-            examples = apply_exclusion_filters(examples, exclusion_filter) if exclusion_filter
-            examples = apply_inclusion_filters(examples, inclusion_filter) if inclusion_filter
+            examples = filter_manager.prune(examples)
             examples.uniq
+            examples.extend(Extensions::Ordered)
           end
         }
+      end
+
+      def reset
+        example_groups.clear
+        shared_example_groups.clear
+      end
+
+      def filter_manager
+        @configuration.filter_manager
       end
 
       def register(example_group)
@@ -24,7 +36,7 @@ module RSpec
       end
 
       def inclusion_filter
-        @configuration.filter
+        @configuration.inclusion_filter
       end
 
       def exclusion_filter
@@ -35,61 +47,75 @@ module RSpec
         @configuration.configure_group(group)
       end
 
-      def shared_example_groups
-        @shared_example_groups ||= {}
-      end
-
       def example_count
-        example_groups.collect {|g| g.descendants}.flatten.inject(0) { |sum, g| sum += g.filtered_examples.size }
-      end
-
-      def apply_inclusion_filters(examples, conditions={})
-        examples.select(&apply?(:any?, conditions))
-      end
-
-      alias_method :find, :apply_inclusion_filters
-
-      def apply_exclusion_filters(examples, conditions={})
-        examples.reject(&apply?(:any?, conditions))
+        example_groups.collect {|g| g.descendants}.flatten.inject(0) do |sum, g|
+          sum += g.filtered_examples.size
+        end
       end
 
       def preceding_declaration_line(filter_line)
-        declaration_line_numbers.inject(nil) do |highest_prior_declaration_line, line|
+        declaration_line_numbers.sort.inject(nil) do |highest_prior_declaration_line, line|
           line <= filter_line ? line : highest_prior_declaration_line
         end
       end
 
-      def announce_inclusion_filter
-        if inclusion_filter
-          if @configuration.run_all_when_everything_filtered? && RSpec.world.example_count.zero?
-            @configuration.reporter.message "No examples were matched by #{inclusion_filter.inspect}, running all"
-            @configuration.clear_inclusion_filter
-            filtered_examples.clear
+      def reporter
+        @configuration.reporter
+      end
+
+      def announce_filters
+        filter_announcements = []
+
+        announce_inclusion_filter filter_announcements
+        announce_exclusion_filter filter_announcements
+
+        unless filter_manager.empty?
+          if filter_announcements.length == 1
+            reporter.message("Run options: #{filter_announcements[0]}")
           else
-            @configuration.reporter.message "Run filtered using #{inclusion_filter.inspect}"
+            reporter.message("Run options:\n  #{filter_announcements.join("\n  ")}")
+          end
+        end
+
+        if @configuration.run_all_when_everything_filtered? && example_count.zero?
+          reporter.message("#{everything_filtered_message}; ignoring #{inclusion_filter.description}")
+          filtered_examples.clear
+          inclusion_filter.clear
+        end
+
+        if example_count.zero?
+          example_groups.clear
+          if filter_manager.empty?
+            reporter.message("No examples found.")
+          elsif exclusion_filter.empty_without_conditional_filters?
+            message = everything_filtered_message
+            if @configuration.run_all_when_everything_filtered?
+              message << "; ignoring #{inclusion_filter.description}"
+            end
+            reporter.message(message)
+          elsif inclusion_filter.empty?
+            reporter.message(everything_filtered_message)
           end
         end
       end
-      
-      def announce_exclusion_filter
-        if exclusion_filter && RSpec.world.example_count.zero?
-          @configuration.reporter.message(
-            "No examples were matched. Perhaps #{exclusion_filter.inspect} is excluding everything?")
-          example_groups.clear
+
+      def everything_filtered_message
+        "\nAll examples were filtered out"
+      end
+
+      def announce_inclusion_filter(announcements)
+        unless inclusion_filter.empty?
+          announcements << "include #{inclusion_filter.description}"
         end
       end
 
-      include RSpec::Core::Hooks
-
-      def find_hook(hook, scope, group)
-        @configuration.find_hook(hook, scope, group)
+      def announce_exclusion_filter(announcements)
+        unless exclusion_filter.empty_without_conditional_filters?
+          announcements << "exclude #{exclusion_filter.description}"
+        end
       end
 
     private
-
-      def apply?(predicate, conditions)
-        lambda {|example| example.metadata.apply?(predicate, conditions)}
-      end
 
       def declaration_line_numbers
         @line_numbers ||= example_groups.inject([]) do |lines, g|

@@ -9,5 +9,5 @@ Feature: arbitrary file suffix
         end
       end
       """
-    When I run "rspec a.spec"
-    Then the output should contain "1 example, 0 failures"
+    When I run `rspec a.spec`
+    Then the examples should all pass

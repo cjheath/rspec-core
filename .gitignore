@@ -1,3 +1,4 @@
+.rvmrc
 *.sw?
 .DS_Store
 coverage*
@@ -9,3 +10,9 @@ tags
 rerun.txt
 Gemfile.lock
 .bundle
+*.rbc
+bin
+.rbx
+.yardoc
+vendor
+Gemfile-custom
