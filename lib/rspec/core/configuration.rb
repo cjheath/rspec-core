@@ -156,6 +156,8 @@ MESSAGE
       #     end
       add_setting :treat_symbols_as_metadata_keys_with_true_values
 
+      add_setting :twister
+
       # @private
       add_setting :tty
       # @private

@@ -118,6 +118,10 @@ module RSpec::Core
           options[:profile_examples] = o
         end
 
+        parser.on('-T', '--twist FILE/DIR', 'Use Twister to mutation test the specified files/directories') do |o|
+          (options[:twister] ||= []) << o
+        end
+
         parser.separator <<-FILTERING
 
   **** Filtering/tags ****
