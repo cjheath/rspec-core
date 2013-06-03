@@ -30,7 +30,7 @@ module RSpec
           # Now, for each twist point, do a full run with that twist:
           @twist_points.each do |twist_point|
             Twister.twist [twist_point], twisties
-            @configuration.reporter.reset
+            @configuration.reporter.prepare_terse
             run1 # :expect_new_failure => true
           end
           first_result

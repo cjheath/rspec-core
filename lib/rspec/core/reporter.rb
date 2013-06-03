@@ -2,12 +2,18 @@ module RSpec::Core
   class Reporter
     def initialize(*formatters)
       @formatters = formatters
-      reset
+      prepare
     end
 
-    def reset
+    def prepare
       @example_count = @failure_count = @pending_count = 0
       @duration = @start = nil
+      @terse_mode = false
+    end
+
+    def prepare_terse
+      prepare
+      @terse_mode = true
     end
 
     # @api
@@ -47,42 +53,44 @@ module RSpec::Core
     end
 
     def message(message)
-      notify :message, message
+      notify :message, message unless @terse_mode
     end
 
     def example_group_started(group)
-      notify :example_group_started, group unless group.descendant_filtered_examples.empty?
+      notify :example_group_started, group unless group.descendant_filtered_examples.empty? or @terse_mode
     end
 
     def example_group_finished(group)
-      notify :example_group_finished, group unless group.descendant_filtered_examples.empty?
+      notify :example_group_finished, group unless group.descendant_filtered_examples.empty? or @terse_mode
     end
 
     def example_started(example)
       @example_count += 1
-      notify :example_started, example
+      notify :example_started, example unless @terse_mode
     end
 
     def example_passed(example)
-      notify :example_passed, example
+      notify :example_passed, example unless @terse_mode
     end
 
     def example_failed(example)
       @failure_count += 1
-      notify :example_failed, example
+      notify :example_failed, example unless @terse_mode
     end
 
     def example_pending(example)
       @pending_count += 1
-      notify :example_pending, example
+      notify :example_pending, example unless @terse_mode
     end
 
     def finish(seed)
       begin
         stop
         notify :start_dump
-        notify :dump_pending
-        notify :dump_failures
+        unless @terse_mode
+          notify :dump_pending
+          notify :dump_failures
+        end
         notify :dump_summary, @duration, @example_count, @failure_count, @pending_count
         notify :seed, seed if seed
       ensure
