@@ -1,3 +1,4 @@
+# encoding: utf-8
 require 'spec_helper'
 require 'rspec/core/formatters/text_mate_formatter'
 require 'nokogiri'
@@ -6,10 +7,17 @@ module RSpec
   module Core
     module Formatters
       describe TextMateFormatter do
-        let(:jruby?) { ::RUBY_PLATFORM == 'java' }
-        let(:root)   { File.expand_path("#{File.dirname(__FILE__)}/../../../..") }
-        let(:suffix) { jruby? ? '-jruby' : '' }
+        let(:suffix) {
+          if ::RUBY_PLATFORM == 'java'
+            "-jruby"
+          elsif defined?(Rubinius)
+            "-rbx"
+          else
+            ""
+          end
+        }
 
+        let(:root) { File.expand_path("#{File.dirname(__FILE__)}/../../../..") }
         let(:expected_file) do
           "#{File.dirname(__FILE__)}/text_mate_formatted-#{::RUBY_VERSION}#{suffix}.html"
         end
@@ -19,8 +27,13 @@ module RSpec
             %w[spec/rspec/core/resources/formatter_specs.rb --format textmate --order default]
           )
           options.parse_options
+
           err, out = StringIO.new, StringIO.new
+          err.set_encoding("utf-8") if err.respond_to?(:set_encoding)
+          out.set_encoding("utf-8") if out.respond_to?(:set_encoding)
+
           command_line = RSpec::Core::CommandLine.new(options)
+          command_line.instance_variable_get("@configuration").backtrace_cleaner.inclusion_patterns = []
           command_line.run(err, out)
           out.string.gsub(/\d+\.\d+(s| seconds)/, "n.nnnn\\1")
         end
@@ -57,10 +70,10 @@ module RSpec
             expected_doc = Nokogiri::HTML(expected_html)
             expected_doc.search("div.backtrace").remove
 
-            actual_doc.inner_html.should eq(expected_doc.inner_html)
+            expect(actual_doc.inner_html).to eq(expected_doc.inner_html)
 
             backtrace_lines.each do |backtrace_line|
-              backtrace_line['href'].should include("txmt://open?url=")
+              expect(backtrace_line['href']).to include("txmt://open?url=")
             end
           end
         end
@@ -69,12 +82,12 @@ module RSpec
           Dir.chdir(root) do
             actual_doc = Nokogiri::HTML(generated_html)
 
-            actual_doc.inner_html.should include('(erb):1')
+            expect(actual_doc.inner_html).to include('(erb):1')
           end
         end
 
         it "has a backtrace line from a erb source file we forced to appear" do
-          generated_html.should include('open?url=file:///foo.html.erb')
+          expect(generated_html).to include('open?url=file:///foo.html.erb')
         end
 
       end

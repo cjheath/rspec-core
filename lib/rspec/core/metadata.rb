@@ -31,6 +31,8 @@ module RSpec
         line = line.sub(/\A([^:]+:\d+)$/, '\\1')
         return nil if line == '-e:1'
         line
+      rescue SecurityError
+        nil
       end
 
       # @private
@@ -41,7 +43,18 @@ module RSpec
         # ExampleMetadataHash and GroupMetadataHash, which get mixed in to
         # Metadata for ExampleGroups and Examples (respectively).
         def [](key)
-          return super if has_key?(key)
+          store_computed(key) unless has_key?(key)
+          super
+        end
+
+        def fetch(key, *args)
+          store_computed(key) unless has_key?(key)
+          super
+        end
+
+        private
+
+        def store_computed(key)
           case key
           when :location
             store(:location, location)
@@ -49,7 +62,6 @@ module RSpec
             file_path, line_number = file_and_line_number
             store(:file_path, file_path)
             store(:line_number, line_number)
-            super
           when :execution_result
             store(:execution_result, {})
           when :describes, :described_class
@@ -61,12 +73,10 @@ module RSpec
             store(:full_description, full_description)
           when :description
             store(:description, build_description_from(*self[:description_args]))
-          else
-            super
+          when :description_args
+            store(:description_args, [])
           end
         end
-
-        private
 
         def location
           "#{self[:file_path]}:#{self[:line_number]}"
@@ -81,10 +91,19 @@ module RSpec
           self[:caller].detect {|l| l !~ /\/lib\/rspec\/core/}
         end
 
-        def build_description_from(*parts)
-          parts.map {|p| p.to_s}.inject do |desc, p|
-            p =~ /^(#|::|\.)/ ? "#{desc}#{p}" : "#{desc} #{p}"
-          end || ""
+        def method_description_after_module?(parent_part, child_part)
+          return false unless parent_part.is_a?(Module)
+          child_part =~ /^(#|::|\.)/
+        end
+
+        def build_description_from(first_part = '', *parts)
+          description, _ = parts.inject([first_part.to_s, first_part]) do |(desc, last_part), this_part|
+            this_part = this_part.to_s
+            this_part = (' ' + this_part) unless method_description_after_module?(last_part, this_part)
+            [(desc + this_part), this_part]
+          end
+
+          description
         end
       end
 
@@ -109,8 +128,12 @@ module RSpec
 
         def described_class
           container_stack.each do |g|
-            return g[:described_class] if g.has_key?(:described_class)
-            return g[:describes]       if g.has_key?(:describes)
+            [:described_class, :describes].each do |key|
+              if g.has_key?(key)
+                value = g[key]
+                return value unless value.nil?
+              end
+            end
           end
 
           container_stack.reverse.each do |g|
@@ -223,7 +246,7 @@ module RSpec
       protected
 
       def configure_for_example(description, user_metadata)
-        store(:description_args, [description])
+        store(:description_args, [description]) if description
         store(:caller, user_metadata.delete(:caller) || caller)
         update(user_metadata)
       end

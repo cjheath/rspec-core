@@ -64,8 +64,14 @@ desc "Push docs/cukes to relishapp using the relish-client-gem"
 task :relish, :version do |t, args|
   raise "rake relish[VERSION]" unless args[:version]
   sh "cp Changelog.md features/"
+  if `relish versions rspec/rspec-core`.split.map(&:strip).include? args[:version]
+    puts "Version #{args[:version]} already exists"
+  else
+    sh "relish versions:add rspec/rspec-core:#{args[:version]}"
+  end
   sh "relish push rspec/rspec-core:#{args[:version]}"
   sh "rm features/Changelog.md"
 end
 
-task :default => [:spec, "spec:ui", :cucumber]
+task :default => [:spec, :cucumber]
+

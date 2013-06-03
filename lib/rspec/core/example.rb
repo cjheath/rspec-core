@@ -49,7 +49,8 @@ module RSpec
       # there is one, otherwise returns a message including the location of the
       # example.
       def description
-        metadata[:description].to_s.empty? ? "example at #{location}" : metadata[:description]
+        description = metadata[:description].to_s.empty? ? "example at #{location}" : metadata[:description]
+        RSpec.configuration.format_docstrings_block.call(description)
       end
 
       # @attr_reader
@@ -78,7 +79,7 @@ module RSpec
       def initialize(example_group_class, description, metadata, example_block=nil)
         @example_group_class, @options, @example_block = example_group_class, metadata, example_block
         @metadata  = @example_group_class.metadata.for_example(description, metadata)
-        @exception = nil
+        @example_group_instance = @exception = nil
         @pending_declared_in_example = false
       end
 
@@ -129,7 +130,7 @@ module RSpec
           @example_group_instance = nil
 
           begin
-            assign_auto_description
+            assign_generated_description
           rescue Exception => e
             set_exception(e, "while assigning the example description")
           end
@@ -205,7 +206,7 @@ module RSpec
       # Used internally to set an exception in an after hook, which
       # captures the exception but doesn't raise it.
       def set_exception(exception, context=nil)
-        if @exception
+        if @exception && context != :dont_print
           # An error has already been set; we don't want to override it,
           # but we also don't want silence the error, so let's print it.
           msg = <<-EOS
@@ -232,8 +233,8 @@ An error occurred #{context}
       end
 
       # @private
-      def instance_eval(&block)
-        @example_group_instance.instance_eval(&block)
+      def instance_eval(*args, &block)
+        @example_group_instance.instance_eval(*args, &block)
       end
 
       # @private
@@ -260,7 +261,7 @@ An error occurred #{context}
 
       def start(reporter)
         reporter.example_started(self)
-        record :started_at => Time.now
+        record :started_at => RSpec::Core::Time.now
       end
 
       # @private
@@ -290,8 +291,8 @@ An error occurred #{context}
       end
 
       def record_finished(status, results={})
-        finished_at = Time.now
-        record results.merge(:status => status, :finished_at => finished_at, :run_time => (finished_at - execution_result[:started_at]))
+        finished_at = RSpec::Core::Time.now
+        record results.merge(:status => status, :finished_at => finished_at, :run_time => (finished_at - execution_result[:started_at]).to_f)
       end
 
       def run_before_each
@@ -301,17 +302,23 @@ An error occurred #{context}
 
       def run_after_each
         @example_group_class.run_after_each_hooks(self)
-        @example_group_instance.verify_mocks_for_rspec
+        verify_mocks
       rescue Exception => e
         set_exception(e, "in an after(:each) hook")
       ensure
         @example_group_instance.teardown_mocks_for_rspec
       end
 
-      def assign_auto_description
+      def verify_mocks
+        @example_group_instance.verify_mocks_for_rspec
+      rescue Exception => e
+        set_exception(e, :dont_print)
+      end
+
+      def assign_generated_description
         return unless RSpec.configuration.expecting_with_rspec?
-        if metadata[:description].empty? and !pending?
-          metadata[:description] = RSpec::Matchers.generated_description
+        if metadata[:description_args].empty? and !pending?
+          metadata[:description_args] << RSpec::Matchers.generated_description
         end
         RSpec::Matchers.clear_generated_description
       end

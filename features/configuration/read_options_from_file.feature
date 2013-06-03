@@ -2,12 +2,15 @@ Feature: read command line configuration options from files
 
   RSpec reads command line configuration options from files in two different
   locations:
-  
-    Local:  "./.rspec" (i.e. in the project's root directory)
-    Global: "~/.rspec" (i.e. in the user's home directory)
 
-  Options declared in the local file override those in the global file, while
-  those declared in RSpec.configure will override any ".rspec" file.
+    Local: `./.rspec-local` (i.e. in the project's root directory, can be gitignored)
+    Project:  `./.rspec` (i.e. in the project's root directory, usually checked into the project)
+    Global: `~/.rspec` (i.e. in the user's home directory)
+
+  Configuration options are loaded from `~/.rspec`, `.rspec`,
+  `.rspec-local`, command line switches, and the `SPEC_OPTS` environment
+  variable (listed in lowest to highest precedence; for example, an option
+  in `~/.rspec` can be overridden by an option in `.rspec-local`).
 
   Scenario: color set in .rspec
     Given a file named ".rspec" with:
@@ -15,7 +18,7 @@ Feature: read command line configuration options from files
       --color
       """
     And a file named "spec/example_spec.rb" with:
-      """
+      """ruby
       describe "color_enabled" do
         context "when set with RSpec.configure" do
           before do
@@ -39,7 +42,7 @@ Feature: read command line configuration options from files
       --format documentation
       """
     And a file named "spec/example_spec.rb" with:
-      """
+      """ruby
       describe "formatter set in custom options file" do
         it "sets formatter" do
           RSpec.configuration.formatters.first.
@@ -60,7 +63,7 @@ Feature: read command line configuration options from files
       --color
       """
     And a file named "spec/example_spec.rb" with:
-      """
+      """ruby
       describe "custom options file" do
         it "causes .rspec to be ignored" do
           RSpec.configuration.color_enabled.should be_false
@@ -76,7 +79,7 @@ Feature: read command line configuration options from files
       --format <%= true ? 'documentation' : 'progress' %>
       """
     And a file named "spec/example_spec.rb" with:
-      """
+      """ruby
       describe "formatter" do
         it "is set to documentation" do
           RSpec.configuration.formatters.first.should be_an(RSpec::Core::Formatters::DocumentationFormatter)

@@ -7,12 +7,18 @@ module RSpec
       # strategies like randomization.
       module Ordered
         # @private
-        def ordered
-          if RSpec.configuration.randomize?
-            Kernel.srand RSpec.configuration.seed
-            sort_by { Kernel.rand size }
-          else
-            self
+        module ExampleGroups
+          # @private
+          def ordered
+            RSpec.configuration.group_ordering_block.call(self)
+          end
+        end
+
+        # @private
+        module Examples
+          # @private
+          def ordered
+            RSpec.configuration.example_ordering_block.call(self)
           end
         end
       end

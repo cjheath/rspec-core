@@ -1,7 +1,8 @@
 require "spec_helper"
 
 module RSpec::Core
-  describe ProjectInitializer, :fakefs do
+  describe ProjectInitializer, :isolated_directory => true do
+
     describe "#run" do
       context "with no args" do
         let(:command_line_config) { ProjectInitializer.new }
@@ -20,7 +21,7 @@ module RSpec::Core
 
           it "generates a .rspec" do
             command_line_config.run
-            File.read('.rspec').should =~ /--color\n--format progress/m
+            expect(File.read('.rspec')).to match(/--color\n--format progress/m)
           end
         end
 
@@ -34,7 +35,7 @@ module RSpec::Core
           it "doesn't create a new one" do
             File.open('.rspec', 'w') {|f| f << '--color'}
             command_line_config.run
-            File.read('.rspec').should eq('--color')
+            expect(File.read('.rspec')).to eq('--color')
           end
         end
 
@@ -46,7 +47,7 @@ module RSpec::Core
 
           it "generates a spec/spec_helper.rb" do
             command_line_config.run
-            File.read('spec/spec_helper.rb').should =~ /RSpec\.configure do \|config\|/m
+            expect(File.read('spec/spec_helper.rb')).to match(/RSpec\.configure do \|config\|/m)
           end
         end
 
@@ -63,7 +64,7 @@ module RSpec::Core
             random_content = "content #{rand}"
             File.open('spec/spec_helper.rb', 'w') {|f| f << random_content}
             command_line_config.run
-            File.read('spec/spec_helper.rb').should eq(random_content)
+            expect(File.read('spec/spec_helper.rb')).to eq(random_content)
           end
         end
 
@@ -81,13 +82,13 @@ module RSpec::Core
           it "removes it if confirmed" do
             command_line_config.stub(:gets => 'yes')
             command_line_config.run
-            File.exist?('autotest/discover.rb').should be_false
+            expect(File.exist?('autotest/discover.rb')).to be_false
           end
 
           it "leaves it if not confirmed" do
             command_line_config.stub(:gets => 'no')
             command_line_config.run
-            File.exist?('autotest/discover.rb').should be_true
+            expect(File.exist?('autotest/discover.rb')).to be_true
           end
         end
 
@@ -105,13 +106,13 @@ module RSpec::Core
           it "removes it if confirmed" do
             command_line_config.stub(:gets => 'yes')
             command_line_config.run
-            File.exist?('lib/tasks/rspec.rake').should be_false
+            expect(File.exist?('lib/tasks/rspec.rake')).to be_false
           end
 
           it "leaves it if not confirmed" do
             command_line_config.stub(:gets => 'no')
             command_line_config.run
-            File.exist?('lib/tasks/rspec.rake').should be_true
+            expect(File.exist?('lib/tasks/rspec.rake')).to be_true
           end
         end
       end
@@ -121,7 +122,6 @@ module RSpec::Core
           config = ProjectInitializer.new("another_arg")
           config.stub(:puts)
           config.stub(:gets => 'no')
-          config.should_receive(:warn).with(/no longer.*another_arg was ignored/)
           config.run
         end
       end

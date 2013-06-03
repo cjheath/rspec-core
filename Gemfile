@@ -1,8 +1,8 @@
-source "http://rubygems.org"
+source "https://rubygems.org"
 
 gemspec
 
-%w[rspec rspec-core rspec-expectations rspec-mocks].each do |lib|
+%w[rspec rspec-expectations rspec-mocks].each do |lib|
   library_path = File.expand_path("../../#{lib}", __FILE__)
   if File.exist?(library_path)
     gem lib, :path => library_path
@@ -12,9 +12,11 @@ gemspec
 end
 
 ### deps for rdoc.info
-gem 'yard',          '0.8.0', :require => false
-gem 'redcarpet',     '2.1.1'
-gem 'github-markup', '0.7.2'
+platforms :ruby do
+  gem 'yard',          '0.8.0', :require => false
+  gem 'redcarpet',     '2.1.1'
+  gem 'github-markup', '0.7.2'
+end
 
 platforms :jruby do
   gem "jruby-openssl"

@@ -5,10 +5,10 @@ Feature: exclusion filters
 
   If you set the `treat_symbols_as_metadata_keys_with_true_values` config option
   to `true`, you can specify metadata using only symbols.
-  
+
   Scenario: exclude an example
     Given a file named "spec/sample_spec.rb" with:
-      """
+      """ruby
       RSpec.configure do |c|
         # declare an exclusion filter
         c.filter_run_excluding :broken => true
@@ -29,19 +29,19 @@ Feature: exclusion filters
 
   Scenario: exclude a group
     Given a file named "spec/sample_spec.rb" with:
-      """
+      """ruby
       RSpec.configure do |c|
         c.filter_run_excluding :broken => true
       end
-  
+
       describe "group 1", :broken => true do
         it "group 1 example 1" do
         end
-  
+
         it "group 1 example 2" do
         end
       end
-  
+
       describe "group 2" do
         it "group 2 example 1" do
         end
@@ -51,44 +51,43 @@ Feature: exclusion filters
     Then the output should contain "group 2 example 1"
     And  the output should not contain "group 1 example 1"
     And  the output should not contain "group 1 example 2"
-  
+
   Scenario: exclude multiple groups
     Given a file named "spec/sample_spec.rb" with:
-      """
+      """ruby
       RSpec.configure do |c|
         c.filter_run_excluding :broken => true
       end
-  
+
       describe "group 1", :broken => true do
         before(:all) do
           raise "you should not see me"
         end
-        
+
         it "group 1 example 1" do
         end
-  
+
         it "group 1 example 2" do
         end
       end
-  
+
       describe "group 2", :broken => true do
         before(:each) do
           raise "you should not see me"
         end
-        
+
         it "group 2 example 1" do
         end
       end
       """
     When I run `rspec ./spec/sample_spec.rb --format doc`
-    Then the output should match /All examples were filtered out/
-    And  the examples should all pass
+    Then the process should succeed even though no examples were run
     And  the output should not contain "group 1"
     And  the output should not contain "group 2"
 
   Scenario: before/after(:all) hooks in excluded example group are not run
     Given a file named "spec/before_after_all_exclusion_filter_spec.rb" with:
-      """
+      """ruby
       RSpec.configure do |c|
         c.filter_run_excluding :broken => true
       end
@@ -119,7 +118,7 @@ Feature: exclusion filters
 
   Scenario: Use symbols as metadata
     Given a file named "symbols_as_metadata_spec.rb" with:
-      """
+      """ruby
       RSpec.configure do |c|
         c.treat_symbols_as_metadata_keys_with_true_values = true
         c.filter_run_excluding :broken

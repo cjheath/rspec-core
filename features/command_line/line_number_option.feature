@@ -8,7 +8,7 @@ Feature: --line_number option
 
   Scenario: standard examples
     Given a file named "example_spec.rb" with:
-      """
+      """ruby
       require "rspec/expectations"
 
       describe 9 do
@@ -41,7 +41,7 @@ Feature: --line_number option
 
   Scenario: one liner
     Given a file named "example_spec.rb" with:
-      """
+      """ruby
       require "rspec/expectations"
 
       describe 9 do
@@ -49,7 +49,7 @@ Feature: --line_number option
         it { should be > 8 }
 
         it { should be < 10 }
-        
+
       end
       """
     When I run `rspec example_spec.rb --line_number 5 --format doc`

@@ -1,8 +1,16 @@
 require 'fileutils'
+require 'rspec/core/backtrace_cleaner'
+require 'rspec/core/ruby_project'
+require 'rspec/core/formatters/deprecation_formatter.rb'
 
 module RSpec
   module Core
     # Stores runtime configuration information.
+    #
+    # Configuration options are loaded from `~/.rspec`, `.rspec`,
+    # `.rspec-local`, command line switches, and the `SPEC_OPTS` environment
+    # variable (listed in lowest to highest precedence; for example, an option
+    # in `~/.rspec` can be overridden by an option in `.rspec-local`).
     #
     # @example Standard settings
     #     RSpec.configure do |c|
@@ -27,19 +35,15 @@ module RSpec
 
       # @private
       def self.define_reader(name)
-        eval <<-CODE
-          def #{name}
-            value_for(#{name.inspect}, defined?(@#{name}) ? @#{name} : nil)
-          end
-        CODE
+        define_method(name) do
+          variable = instance_variable_defined?("@#{name}") ? instance_variable_get("@#{name}") : nil
+          value_for(name, variable)
+        end
       end
 
       # @private
       def self.deprecate_alias_key
-        RSpec.warn_deprecation <<-MESSAGE
-The :alias option to add_setting is deprecated. Use :alias_with on the original setting instead.
-Called from #{caller(0)[5]}
-MESSAGE
+        RSpec.deprecate("add_setting with :alias option", :replacement => ":alias_with")
       end
 
       # @private
@@ -75,15 +79,6 @@ MESSAGE
 
       # @macro [attach] add_setting
       #   @attribute $1
-      # Patterns to match against lines in backtraces presented in failure
-      # messages in order to filter them out (default:
-      # DEFAULT_BACKTRACE_PATTERNS).  You can either replace this list using
-      # the setter or modify it using the getter.
-      #
-      # To override this behavior and display a full backtrace, use
-      # `--backtrace` on the command line, in a `.rspec` file, or in the
-      # `rspec_options` attribute of RSpec's rake task.
-      add_setting :backtrace_clean_patterns
 
       # Path to use if no path is provided to the `rspec` command (default:
       # `"spec"`). Allows you to just type `rspec` instead of `rspec spec` to
@@ -94,11 +89,14 @@ MESSAGE
       # server, but you can use tools like spork.
       add_setting :drb
 
-      # The drb_port (default: `8989`).
+      # The drb_port (default: nil).
       add_setting :drb_port
 
       # Default: `$stderr`.
       add_setting :error_stream
+
+      # Default: `$stderr`.
+      add_setting :deprecation_stream
 
       # Clean up and exit after the first failure (default: `false`).
       add_setting :fail_fast
@@ -110,6 +108,12 @@ MESSAGE
       # load order for files, declaration order for groups and examples).
       define_reader :order
 
+      # Indicates files configured to be required
+      define_reader :requires
+
+      # Returns dirs that have been prepended to the load path by #lib=
+      define_reader :libs
+
       # Default: `$stdout`.
       # Also known as `output` and `out`
       add_setting :output_stream, :alias_with => [:output, :out]
@@ -117,11 +121,21 @@ MESSAGE
       # Load files matching this pattern (default: `'**/*_spec.rb'`)
       add_setting :pattern, :alias_with => :filename_pattern
 
-      # Report the times for the 10 slowest examples (default: `false`).
+      # Report the times for the slowest examples (default: `false`).
+      # Use this to specify the number of examples to include in the profile.
       add_setting :profile_examples
 
       # Run all examples if none match the configured filters (default: `false`).
       add_setting :run_all_when_everything_filtered
+
+      # Allow user to configure their own success/pending/failure colors
+      # @param [Symbol] should be one of the following: [:black, :white, :red, :green, :yellow, :blue, :magenta, :cyan]
+      add_setting :success_color
+      add_setting :pending_color
+      add_setting :failure_color
+      add_setting :default_color
+      add_setting :fixed_color
+      add_setting :detail_color
 
       # Seed for random ordering (default: generated randomly each run).
       #
@@ -169,14 +183,7 @@ MESSAGE
       # @private
       attr_accessor :filter_manager
 
-      DEFAULT_BACKTRACE_PATTERNS = [
-        /\/lib\d*\/ruby\//,
-        /org\/jruby\//,
-        /bin\//,
-        /gems/,
-        /spec\/spec_helper\.rb/,
-        /lib\/rspec\/(core|expectations|matchers|mocks)/
-      ]
+      attr_reader :backtrace_cleaner
 
       def initialize
         @expectation_frameworks = []
@@ -187,11 +194,23 @@ MESSAGE
         @color = false
         @pattern = '**/*_spec.rb'
         @failure_exit_code = 1
-        @backtrace_clean_patterns = DEFAULT_BACKTRACE_PATTERNS.dup
+
+        @backtrace_cleaner = BacktraceCleaner.new
+
         @default_path = 'spec'
+        @deprecation_stream = $stderr
         @filter_manager = FilterManager.new
         @preferred_options = {}
         @seed = srand % 0xFFFF
+        @failure_color = :red
+        @success_color = :green
+        @pending_color = :yellow
+        @default_color = :white
+        @fixed_color = :blue
+        @detail_color = :cyan
+        @profile_examples = false
+        @requires = []
+        @libs = []
       end
 
       # @private
@@ -204,6 +223,7 @@ MESSAGE
           set_order_and_seed(hash)
         end
         @preferred_options.merge!(hash)
+        self.warnings = value_for :warnings, nil
       end
 
       # @private
@@ -255,15 +275,6 @@ MESSAGE
         send("#{name}=", default) if default
       end
 
-      # Used by formatters to ask whether a backtrace line should be displayed
-      # or not, based on the line matching any `backtrace_clean_patterns`.
-      def cleaned_from_backtrace?(line)
-        # TODO (David 2011-12-25) why are we asking the configuration to do
-        # stuff? Either use the patterns directly or enapsulate the filtering
-        # in a BacktraceCleaner object.
-        backtrace_clean_patterns.any? { |regex| line =~ regex }
-      end
-
       # Returns the configured mock framework adapter module
       def mock_framework
         mock_with :rspec unless @mock_framework
@@ -273,6 +284,62 @@ MESSAGE
       # Delegates to mock_framework=(framework)
       def mock_framework=(framework)
         mock_with framework
+      end
+
+      # The patterns to discard from backtraces. Deprecated, use
+      # Configuration#backtrace_exclusion_patterns instead
+      #
+      # Defaults to RSpec::Core::BacktraceCleaner::DEFAULT_EXCLUSION_PATTERNS
+      #
+      # One can replace the list by using the setter or modify it through the
+      # getter
+      #
+      # To override this behaviour and display a full backtrace, use
+      # `--backtrace`on the command line, in a `.rspec` file, or in the
+      # `rspec_options` attribute of RSpec's rake task.
+      def backtrace_clean_patterns
+        RSpec.deprecate("RSpec::Core::Configuration#backtrace_clean_patterns",
+                        :replacement => "RSpec::Core::Configuration#backtrace_exclusion_patterns")
+        @backtrace_cleaner.exclusion_patterns
+      end
+
+      def backtrace_clean_patterns=(patterns)
+        RSpec.deprecate("RSpec::Core::Configuration#backtrace_clean_patterns",
+                        :replacement => "RSpec::Core::Configuration#backtrace_exclusion_patterns")
+        @backtrace_cleaner.exclusion_patterns = patterns
+      end
+
+      # The patterns to always include to backtraces.
+      #
+      # Defaults to [Regexp.new Dir.getwd] if the current working directory
+      # matches any of the exclusion patterns. Otherwise it defaults to empty.
+      #
+      # One can replace the list by using the setter or modify it through the
+      # getter
+      def backtrace_inclusion_patterns
+        @backtrace_cleaner.inclusion_patterns
+      end
+
+      def backtrace_inclusion_patterns=(patterns)
+        @backtrace_cleaner.inclusion_patterns = patterns
+      end
+
+      # The patterns to discard from backtraces.
+      #
+      # Defaults to RSpec::Core::BacktraceCleaner::DEFAULT_EXCLUSION_PATTERNS
+      #
+      # One can replace the list by using the setter or modify it through the
+      # getter
+      #
+      # To override this behaviour and display a full backtrace, use
+      # `--backtrace`on the command line, in a `.rspec` file, or in the
+      # `rspec_options` attribute of RSpec's rake task.
+      def backtrace_exclusion_patterns
+        @backtrace_cleaner.exclusion_patterns
+      end
+
+      def backtrace_exclusion_patterns=(patterns)
+        @backtrace_cleaner.exclusion_patterns = patterns
       end
 
       # Sets the mock framework adapter module.
@@ -403,21 +470,29 @@ MESSAGE
         @expectation_frameworks.push(*modules)
       end
 
-      def full_backtrace=(true_or_false)
-        @backtrace_clean_patterns = true_or_false ? [] : DEFAULT_BACKTRACE_PATTERNS
+      def full_backtrace?
+        @backtrace_cleaner.full_backtrace?
       end
 
-      def color
-        return false unless output_to_tty?
+      def full_backtrace=(true_or_false)
+        @backtrace_cleaner.full_backtrace = true_or_false
+      end
+
+      def color(output=output_stream)
+        # rspec's built-in formatters all call this with the output argument,
+        # but defaulting to output_stream for backward compatibility with
+        # formatters in extension libs
+        return false unless output_to_tty?(output)
         value_for(:color, @color)
       end
 
       def color=(bool)
         if bool
-          @color = true
           if RSpec.windows_os? and not ENV['ANSICON']
-            warn "You must use ANSICON 1.31 or later (http://adoxa.110mb.com/ansicon/) to use colour on Windows"
+            warn "You must use ANSICON 1.31 or later (http://adoxa.3eeweb.com/ansicon/) to use colour on Windows"
             @color = false
+          else
+            @color = true
           end
         end
       end
@@ -429,11 +504,17 @@ MESSAGE
       define_predicate_for :color_enabled, :color
 
       def libs=(libs)
-        libs.map {|lib| $LOAD_PATH.unshift lib}
+        libs.map do |lib|
+          @libs.unshift lib
+          $LOAD_PATH.unshift lib
+        end
       end
 
       def requires=(paths)
+        RSpec.deprecate("RSpec::Core::Configuration#requires=(paths)",
+                        :replacement => "paths.each {|path| require path}")
         paths.map {|path| require path}
+        @requires += paths
       end
 
       def debug=(bool)
@@ -457,13 +538,25 @@ EOM
         end
       end
 
+      def debug?
+        !!defined?(Debugger)
+      end
+
       # Run examples defined on `line_numbers` in all files to run.
       def line_numbers=(line_numbers)
         filter_run :line_numbers => line_numbers.map{|l| l.to_i}
       end
 
+      def line_numbers
+        filter.fetch(:line_numbers,[])
+      end
+
       def full_description=(description)
         filter_run :full_description => Regexp.union(*Array(description).map {|d| Regexp.new(d) })
+      end
+
+      def full_description
+        filter.fetch :full_description, nil
       end
 
       # @overload add_formatter(formatter)
@@ -475,15 +568,16 @@ EOM
       # ### Note
       #
       # For internal purposes, `add_formatter` also accepts the name of a class
-      # and path to a file that contains that class definition, but you should
-      # consider that a private api that may change at any time without notice.
-      def add_formatter(formatter_to_use, path=nil)
+      # and paths to use for output streams, but you should consider that a
+      # private api that may change at any time without notice.
+      def add_formatter(formatter_to_use, *paths)
         formatter_class =
           built_in_formatter(formatter_to_use) ||
           custom_formatter(formatter_to_use) ||
           (raise ArgumentError, "Formatter '#{formatter_to_use}' unknown - maybe you meant 'documentation' or 'progress'?.")
 
-        formatters << formatter_class.new(path ? file_at(path) : output)
+        paths << output if paths.empty?
+        formatters << formatter_class.new(*paths.map {|p| String === p ? file_at(p) : p})
       end
 
       alias_method :formatter=, :add_formatter
@@ -495,14 +589,28 @@ EOM
       def reporter
         @reporter ||= begin
                         add_formatter('progress') if formatters.empty?
+                        add_formatter(RSpec::Core::Formatters::DeprecationFormatter, deprecation_stream, output_stream)
                         Reporter.new(*formatters)
                       end
+      end
+
+      # @api private
+      #
+      # Defaults `profile_examples` to 10 examples when `@profile_examples` is `true`.
+      #
+      def profile_examples
+        profile = value_for(:profile_examples, @profile_examples)
+        if profile && !profile.is_a?(Integer)
+          10
+        else
+          profile
+        end
       end
 
       # @private
       def files_or_directories_to_run=(*files)
         files = files.flatten
-        files << default_path if command == 'rspec' && default_path && files.empty?
+        files << default_path if (command == 'rspec' || Runner.running_in_drb?) && default_path && files.empty?
         self.files_to_run = get_files_to_run(files)
       end
 
@@ -755,6 +863,14 @@ EOM
       end
 
       # @private
+      def setup_load_path_and_require(paths)
+        directories = ['lib', default_path].select { |p| File.directory? p }
+        RSpec::Core::RubyProject.add_to_load_path(*directories)
+        paths.each {|path| require path}
+        @requires += paths
+      end
+
+      # @private
       if RUBY_VERSION.to_f >= 1.9
         def safe_extend(mod, host)
           host.extend(mod) unless (class << host; self; end) < mod
@@ -779,8 +895,27 @@ EOM
 
       # @private
       def load_spec_files
-        files_to_run.uniq.map {|f| load File.expand_path(f) }
+        files_to_run.uniq.each {|f| load File.expand_path(f) }
         raise_if_rspec_1_is_loaded
+      end
+
+      # @private
+      DEFAULT_FORMATTER = lambda { |string| string }
+
+      # Formats the docstring output using the block provided.
+      #
+      # @example
+      #   # This will strip the descriptions of both examples and example groups.
+      #   RSpec.configure do |config|
+      #     config.format_docstrings { |s| s.strip }
+      #   end
+      def format_docstrings(&block)
+        @format_docstrings_block = block_given? ? block : DEFAULT_FORMATTER
+      end
+
+      # @private
+      def format_docstrings_block
+        @format_docstrings_block ||= DEFAULT_FORMATTER
       end
 
       # @api
@@ -801,20 +936,103 @@ EOM
         order.to_s.match(/rand/)
       end
 
+      # @private
+      DEFAULT_ORDERING = lambda { |list| list }
+
+      # @private
+      RANDOM_ORDERING = lambda do |list|
+        Kernel.srand RSpec.configuration.seed
+        ordering = list.sort_by { Kernel.rand(list.size) }
+        Kernel.srand # reset random generation
+        ordering
+      end
+
+      # Sets a strategy by which to order examples.
+      #
+      # @example
+      #   RSpec.configure do |config|
+      #     config.order_examples do |examples|
+      #       examples.reverse
+      #     end
+      #   end
+      #
+      # @see #order_groups
+      # @see #order_groups_and_examples
+      # @see #order=
+      # @see #seed=
+      def order_examples(&block)
+        @example_ordering_block = block
+        @order = "custom" unless built_in_orderer?(block)
+      end
+
+      # @private
+      def example_ordering_block
+        @example_ordering_block ||= DEFAULT_ORDERING
+      end
+
+      # Sets a strategy by which to order groups.
+      #
+      # @example
+      #   RSpec.configure do |config|
+      #     config.order_groups do |groups|
+      #       groups.reverse
+      #     end
+      #   end
+      #
+      # @see #order_examples
+      # @see #order_groups_and_examples
+      # @see #order=
+      # @see #seed=
+      def order_groups(&block)
+        @group_ordering_block = block
+        @order = "custom" unless built_in_orderer?(block)
+      end
+
+      # @private
+      def group_ordering_block
+        @group_ordering_block ||= DEFAULT_ORDERING
+      end
+
+      # Sets a strategy by which to order groups and examples.
+      #
+      # @example
+      #   RSpec.configure do |config|
+      #     config.order_groups_and_examples do |groups_or_examples|
+      #       groups_or_examples.reverse
+      #     end
+      #   end
+      #
+      # @see #order_groups
+      # @see #order_examples
+      # @see #order=
+      # @see #seed=
+      def order_groups_and_examples(&block)
+        order_groups(&block)
+        order_examples(&block)
+      end
+
+      # Set Ruby warnings on or off
+      def warnings= value
+        $VERBOSE = !!value
+      end
+
+      def warnings
+        $VERBOSE
+      end
+
     private
 
       def get_files_to_run(paths)
-        patterns = pattern.split(",")
         paths.map do |path|
           path = path.gsub(File::ALT_SEPARATOR, File::SEPARATOR) if File::ALT_SEPARATOR
-          File.directory?(path) ? gather_directories(path, patterns) : extract_location(path)
-        end.flatten
+          File.directory?(path) ? gather_directories(path) : extract_location(path)
+        end.flatten.sort
       end
 
-      def gather_directories(path, patterns)
-        patterns.map do |pattern|
-          pattern =~ /^#{path}/ ? Dir[pattern.strip] : Dir["#{path}/{#{pattern.strip}}"]
-        end
+      def gather_directories(path)
+        stripped = "{#{pattern.gsub(/\s*,\s*/, ',')}}"
+        files    = pattern =~ /^#{Regexp.escape path}/ ? Dir[stripped] : Dir["#{path}/#{stripped}"]
+        files.sort
       end
 
       def extract_location(path)
@@ -858,12 +1076,8 @@ MESSAGE
         end
       end
 
-      def output_to_tty?
-        begin
-          output_stream.tty? || tty?
-        rescue NoMethodError
-          false
-        end
+      def output_to_tty?(output=output_stream)
+        tty? || (output.respond_to?(:tty?) && output.tty?)
       end
 
       def built_in_formatter(key)
@@ -880,6 +1094,9 @@ MESSAGE
         when 'p', 'progress'
           require 'rspec/core/formatters/progress_formatter'
           RSpec::Core::Formatters::ProgressFormatter
+        when 'j', 'json'
+          require 'rspec/core/formatters/json_formatter'
+          RSpec::Core::Formatters::JsonFormatter
         end
       end
 
@@ -925,7 +1142,9 @@ MESSAGE
       end
 
       def order_and_seed_from_seed(value)
+        order_groups_and_examples(&RANDOM_ORDERING)
         @order, @seed = 'rand', value.to_i
+        [@order, @seed]
       end
 
       def set_order_and_seed(hash)
@@ -937,8 +1156,19 @@ MESSAGE
         order, seed = type.to_s.split(':')
         @order = order
         @seed  = seed = seed.to_i if seed
-        @order, @seed = nil, nil if order == 'default'
+
+        if randomize?
+          order_groups_and_examples(&RANDOM_ORDERING)
+        elsif order == 'default'
+          @order, @seed = nil, nil
+          order_groups_and_examples(&DEFAULT_ORDERING)
+        end
+
         return order, seed
+      end
+
+      def built_in_orderer?(block)
+        [DEFAULT_ORDERING, RANDOM_ORDERING].include?(block)
       end
 
     end

@@ -3,12 +3,12 @@ module RSpec
     module Hooks
       include MetadataHashBuilder::WithConfigWarning
 
-      module HookExtension
-        attr_reader :options
+      class Hook
+        attr_reader :block, :options
 
-        def with(options)
+        def initialize(block, options)
+          @block = block
           @options = options
-          self
         end
 
         def options_apply?(example_or_group)
@@ -16,11 +16,9 @@ module RSpec
         end
       end
 
-      module BeforeHookExtension
-        include HookExtension
-
+      class BeforeHook < Hook
         def run(example)
-          example.instance_eval(&self)
+          example.instance_eval(&block)
         end
 
         def display_name
@@ -28,11 +26,9 @@ module RSpec
         end
       end
 
-      module AfterHookExtension
-        include HookExtension
-
+      class AfterHook < Hook
         def run(example)
-          example.instance_eval_with_rescue("in an after hook", &self)
+          example.instance_eval_with_rescue("in an after hook", &block)
         end
 
         def display_name
@@ -40,15 +36,22 @@ module RSpec
         end
       end
 
-      module AroundHookExtension
-        include HookExtension
-
+      class AroundHook < Hook
         def display_name
           "around hook"
         end
       end
 
+      module HookCollectionAliases
+        def self.included(host)
+          host.send :alias_method, :prepend, :unshift
+          host.send :alias_method, :append,  :push
+        end
+      end
+
       class HookCollection < Array
+        include HookCollectionAliases
+
         def for(example_or_group)
           self.class.new(select {|hook| hook.options_apply?(example_or_group)}).
             with(example_or_group)
@@ -64,18 +67,9 @@ module RSpec
         end
       end
 
-      class GroupHookCollection < Array
-        def for(group)
-          @group = group
-          self
-        end
-
-        def run
-          shift.run(@group) until empty?
-        end
-      end
-
       class AroundHookCollection < Array
+        include HookCollectionAliases
+
         def for(example, initial_procsy=nil)
           self.class.new(select {|hook| hook.options_apply?(example)}).
             with(example, initial_procsy)
@@ -90,9 +84,20 @@ module RSpec
         def run
           inject(@initial_procsy) do |procsy, around_hook|
             Example.procsy(procsy.metadata) do
-              @example.instance_eval_with_args(procsy, &around_hook)
+              @example.instance_eval_with_args(procsy, &around_hook.block)
             end
           end.call
+        end
+      end
+
+      class GroupHookCollection < Array
+        def for(group)
+          @group = group
+          self
+        end
+
+        def run
+          shift.run(@group) until empty?
         end
       end
 
@@ -108,7 +113,7 @@ module RSpec
         private
         def process host, globals, position, scope
           globals[position][scope].each do |hook|
-            unless host.ancestors.any? { |a| a.hooks[position][scope].include? hook }
+            unless host.parent_groups.any? { |a| a.hooks[position][scope].include? hook }
               self[position][scope] << hook if scope == :each || hook.options_apply?(host)
             end
           end
@@ -119,8 +124,8 @@ module RSpec
       def hooks
         @hooks ||= {
           :around => { :each => AroundHookCollection.new },
-          :before => { :each => [], :all => [], :suite => HookCollection.new },
-          :after =>  { :each => [], :all => [], :suite => HookCollection.new }
+          :before => { :each => HookCollection.new, :all => HookCollection.new, :suite => HookCollection.new },
+          :after =>  { :each => HookCollection.new, :all => HookCollection.new, :suite => HookCollection.new }
         }.extend(RegistersGlobals)
       end
 
@@ -236,6 +241,15 @@ module RSpec
       # examples in the group.  This means that each example can change the
       # state of a shared object, resulting in an ordering dependency that can
       # make it difficult to reason about failures.
+      #
+      # #### unsupported rspec constructs
+      #
+      # RSpec has several constructs that reset state between each example
+      # automatically. These are not intended for use from within `before(:all)`:
+      #
+      #   * `let` declarations
+      #   * `subject` declarations
+      #   * Any mocking, stubbing or test double declaration
       #
       # ### other frameworks
       #
@@ -415,17 +429,17 @@ module RSpec
 
       # @private
       def around_each_hooks_for(example, initial_procsy=nil)
-        AroundHookCollection.new(ancestors.map {|a| a.hooks[:around][:each]}.flatten).for(example, initial_procsy)
+        AroundHookCollection.new(parent_groups.map {|a| a.hooks[:around][:each]}.flatten).for(example, initial_procsy)
       end
 
     private
 
       SCOPES = [:each, :all, :suite]
 
-      EXTENSIONS = {
-        :before => BeforeHookExtension,
-        :after  => AfterHookExtension,
-        :around => AroundHookExtension
+      HOOK_TYPES = {
+        :before => BeforeHook,
+        :after  => AfterHook,
+        :around => AroundHook
       }
 
       def before_all_hooks_for(group)
@@ -437,16 +451,16 @@ module RSpec
       end
 
       def before_each_hooks_for(example)
-        HookCollection.new(ancestors.reverse.map {|a| a.hooks[:before][:each]}.flatten).for(example)
+        HookCollection.new(parent_groups.reverse.map {|a| a.hooks[:before][:each]}.flatten).for(example)
       end
 
       def after_each_hooks_for(example)
-        HookCollection.new(ancestors.map {|a| a.hooks[:after][:each]}.flatten).for(example)
+        HookCollection.new(parent_groups.map {|a| a.hooks[:after][:each]}.flatten).for(example)
       end
 
       def register_hook prepend_or_append, hook, *args, &block
         scope, options = scope_and_options_from(*args)
-        hooks[hook][scope].send(prepend_or_append == :prepend ? :unshift : :push, block.extend(EXTENSIONS[hook]).with(options))
+        hooks[hook][scope].send(prepend_or_append, HOOK_TYPES[hook].new(block, options))
       end
 
       def find_hook(hook, scope, example_or_group, initial_procsy)

@@ -18,8 +18,8 @@ describe "an example" do
         end
       end
       example = group.examples.first
-      example.run(group.new, stub.as_null_object)
-      example.should be_pending_with('just because')
+      example.run(group.new, double.as_null_object)
+      expect(example).to be_pending_with('just because')
     end
 
     it "sets the message to 'No reason given' if :pending => true" do
@@ -28,8 +28,8 @@ describe "an example" do
         end
       end
       example = group.examples.first
-      example.run(group.new, stub.as_null_object)
-      example.should be_pending_with('No reason given')
+      example.run(group.new, double.as_null_object)
+      expect(example).to be_pending_with('No reason given')
     end
   end
 
@@ -39,8 +39,8 @@ describe "an example" do
         it "has no block"
       end
       example = group.examples.first
-      example.run(group.new, stub.as_null_object)
-      example.should be_pending_with('Not yet implemented')
+      example.run(group.new, double.as_null_object)
+      expect(example).to be_pending_with('Not yet implemented')
     end
   end
 
@@ -52,8 +52,8 @@ describe "an example" do
         end
       end
       example = group.examples.first
-      example.run(group.new, stub.as_null_object)
-      example.should be_pending_with(RSpec::Core::Pending::NO_REASON_GIVEN)
+      example.run(group.new, double.as_null_object)
+      expect(example).to be_pending_with(RSpec::Core::Pending::NO_REASON_GIVEN)
     end
   end
 
@@ -62,15 +62,15 @@ describe "an example" do
       it "does not have an auto-generated description" do
         group = RSpec::Core::ExampleGroup.describe('group') do
           it "checks something" do
-            (3+4).should eq(7)
+            expect((3+4)).to eq(7)
           end
           pending do
-            "string".reverse.should eq("gnirts")
+            expect("string".reverse).to eq("gnirts")
           end
         end
         example = group.examples.last
-        example.run(group.new, stub.as_null_object)
-        example.description.should match(/example at/)
+        example.run(group.new, double.as_null_object)
+        expect(example.description).to match(/example at/)
       end
     end
 
@@ -78,15 +78,15 @@ describe "an example" do
       it "does not show any message" do
         group = RSpec::Core::ExampleGroup.describe('group') do
           it "checks something" do
-            (3+4).should eq(7)
+            expect((3+4)).to eq(7)
           end
           specify do
             pending
           end
         end
         example = group.examples.last
-        example.run(group.new, stub.as_null_object)
-        example.description.should match(/example at/)
+        example.run(group.new, double.as_null_object)
+        expect(example.description).to match(/example at/)
       end
     end
   end
@@ -99,8 +99,8 @@ describe "an example" do
         end
       end
       example = group.examples.first
-      example.run(group.new, stub.as_null_object)
-      example.should be_pending_with('just because')
+      example.run(group.new, double.as_null_object)
+      expect(example).to be_pending_with('just because')
     end
   end
 
@@ -112,7 +112,7 @@ describe "an example" do
         end
       end
       example = group.examples.first
-      example.run(group.new, stub.as_null_object)
+      example.run(group.new, double.as_null_object)
       example
     end
 
@@ -123,45 +123,45 @@ describe "an example" do
 
       context "when given no options" do
         it "is listed as pending with the supplied message" do
-          run_example("just because").should be_pending_with("just because")
+          expect(run_example("just because")).to be_pending_with("just because")
         end
 
         it "is listed as pending with the default message when no message is given" do
-          run_example.should be_pending_with(RSpec::Core::Pending::NO_REASON_GIVEN)
+          expect(run_example).to be_pending_with(RSpec::Core::Pending::NO_REASON_GIVEN)
         end
       end
 
       context "when given a truthy :if option" do
         it "is listed as pending with the supplied message" do
-          run_example("just because", :if => true).should be_pending_with("just because")
+          expect(run_example("just because", :if => true)).to be_pending_with("just because")
         end
 
         it "is listed as pending with the default message when no message is given" do
-          run_example(:if => true).should be_pending_with(RSpec::Core::Pending::NO_REASON_GIVEN)
+          expect(run_example(:if => true)).to be_pending_with(RSpec::Core::Pending::NO_REASON_GIVEN)
         end
       end
 
       context "when given a falsey :if option" do
         it "runs the example and fails" do
-          run_example(                :if => false).should fail_with(ArgumentError)
-          run_example("just because", :if => false).should fail_with(ArgumentError)
+          expect(run_example(                :if => false)).to fail_with(ArgumentError)
+          expect(run_example("just because", :if => false)).to fail_with(ArgumentError)
         end
       end
 
       context "when given a truthy :unless option" do
         it "runs the example and fails" do
-          run_example(                :unless => true).should fail_with(ArgumentError)
-          run_example("just because", :unless => true).should fail_with(ArgumentError)
+          expect(run_example(                :unless => true)).to fail_with(ArgumentError)
+          expect(run_example("just because", :unless => true)).to fail_with(ArgumentError)
         end
       end
 
       context "when given a falsey :unless option" do
         it "is listed as pending with the supplied message" do
-          run_example("just because", :unless => false).should be_pending_with("just because")
+          expect(run_example("just because", :unless => false)).to be_pending_with("just because")
         end
 
         it "is listed as pending with the default message when no message is given" do
-          run_example(:unless => false).should be_pending_with(RSpec::Core::Pending::NO_REASON_GIVEN)
+          expect(run_example(:unless => false)).to be_pending_with(RSpec::Core::Pending::NO_REASON_GIVEN)
         end
       end
     end
@@ -172,47 +172,47 @@ describe "an example" do
       end
 
       it "passes" do
-        run_example("just because").should be_pending
+        expect(run_example("just because")).to be_pending
       end
     end
 
     context "that passes" do
       def run_example(*pending_args)
-        super(*pending_args) { 3.should eq(3) }
+        super(*pending_args) { expect(3).to eq(3) }
       end
 
       context "when given no options" do
         it "fails with a PendingExampleFixedError" do
-          run_example("just because").should fail_with(RSpec::Core::Pending::PendingExampleFixedError)
-          run_example.should                 fail_with(RSpec::Core::Pending::PendingExampleFixedError)
+          expect(run_example("just because")).to fail_with(RSpec::Core::Pending::PendingExampleFixedError)
+          expect(run_example).to                 fail_with(RSpec::Core::Pending::PendingExampleFixedError)
         end
       end
 
       context "when given a truthy :if option" do
         it "fails with a PendingExampleFixedError" do
-          run_example("just because", :if => true).should fail_with(RSpec::Core::Pending::PendingExampleFixedError)
-          run_example(                :if => true).should fail_with(RSpec::Core::Pending::PendingExampleFixedError)
+          expect(run_example("just because", :if => true)).to fail_with(RSpec::Core::Pending::PendingExampleFixedError)
+          expect(run_example(                :if => true)).to fail_with(RSpec::Core::Pending::PendingExampleFixedError)
         end
       end
 
       context "when given a falsey :if option" do
         it "runs the example and it passes" do
-          run_example(                :if => false).should pass
-          run_example("just because", :if => false).should pass
+          expect(run_example(                :if => false)).to pass
+          expect(run_example("just because", :if => false)).to pass
         end
       end
 
       context "when given a truthy :unless option" do
         it "runs the example and it passes" do
-          run_example(                :unless => true).should pass
-          run_example("just because", :unless => true).should pass
+          expect(run_example(                :unless => true)).to pass
+          expect(run_example("just because", :unless => true)).to pass
         end
       end
 
       context "when given a falsey :unless option" do
         it "fails with a PendingExampleFixedError" do
-          run_example("just because", :unless => false).should fail_with(RSpec::Core::Pending::PendingExampleFixedError)
-          run_example(                :unless => false).should fail_with(RSpec::Core::Pending::PendingExampleFixedError)
+          expect(run_example("just because", :unless => false)).to fail_with(RSpec::Core::Pending::PendingExampleFixedError)
+          expect(run_example(                :unless => false)).to fail_with(RSpec::Core::Pending::PendingExampleFixedError)
         end
       end
     end

@@ -8,19 +8,23 @@ module RSpec
       attr_reader :options
 
       def initialize(args)
-        @args = args
+        @args = args.dup
+        if @args.include?("--default_path")
+          @args[@args.index("--default_path")] = "--default-path"
+        end
+
+        if @args.include?("--line_number")
+          @args[@args.index("--line_number")] = "--line-number"
+        end
       end
 
       def configure(config)
-        formatters = options.delete(:formatters)
-
         config.filter_manager = filter_manager
+        process_options_into config
 
-        order(options.keys, :libs, :requires, :default_path, :pattern).each do |key|
-          force?(key) ? config.force(key => options[key]) : config.send("#{key}=", options[key])
-        end
+        config.setup_load_path_and_require(options[:requires] || [])
 
-        formatters.each {|pair| config.add_formatter(*pair) } if formatters
+        load_formatters_into config
       end
 
       def parse_options
@@ -48,6 +52,8 @@ module RSpec
 
       MERGED_OPTIONS = [:requires, :libs].to_set
 
+      UNPROCESSABLE_OPTIONS = [:formatters, :requires].to_set
+
       def force?(key)
         !NON_FORCED_OPTIONS.include?(key)
       end
@@ -57,6 +63,18 @@ module RSpec
           keys.unshift(key) if keys.delete(key)
         end
         keys
+      end
+
+      def process_options_into(config)
+        opts = options.reject { |k, _| UNPROCESSABLE_OPTIONS.include? k }
+
+        order(opts.keys, :libs, :default_path, :pattern).each do |key|
+          force?(key) ? config.force(key => opts[key]) : config.send("#{key}=", opts[key])
+        end
+      end
+
+      def load_formatters_into(config)
+        options[:formatters].each { |pair| config.add_formatter(*pair) } if options[:formatters]
       end
 
       def extract_filters_from(*configs)
@@ -71,7 +89,7 @@ module RSpec
       end
 
       def file_options
-        custom_options_file ? [custom_options] : [global_options, local_options]
+        custom_options_file ? [custom_options] : [global_options, project_options, local_options]
       end
 
       def env_options
@@ -90,6 +108,10 @@ module RSpec
         @local_options ||= options_from(local_options_file)
       end
 
+      def project_options
+        @project_options ||= options_from(project_options_file)
+      end
+
       def global_options
         @global_options ||= options_from(global_options_file)
       end
@@ -101,19 +123,23 @@ module RSpec
       def args_from_options_file(path)
         return [] unless path && File.exist?(path)
         config_string = options_file_as_erb_string(path)
-        config_string.split(/\n+/).map {|l| l.shellsplit}.flatten
+        config_string.split(/\n+/).map {|l| Shellwords.shellwords(l) }.flatten
       end
 
       def options_file_as_erb_string(path)
-        ERB.new(File.read(path)).result(binding)
+        ERB.new(File.read(path), nil, '-').result(binding)
       end
 
       def custom_options_file
         command_line_options[:custom_options_file]
       end
 
-      def local_options_file
+      def project_options_file
         ".rspec"
+      end
+
+      def local_options_file
+        ".rspec-local"
       end
 
       def global_options_file

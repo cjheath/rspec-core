@@ -6,10 +6,11 @@ Feature: shared examples
   needs to run.
 
   A shared group is included in another group using any of:
-  
+
       include_examples "name"      # include the examples in the current context
       it_behaves_like "name"       # include the examples in a nested context
       it_should_behave_like "name" # include the examples in a nested context
+      matching metadata            # include the examples in the current context
 
   WARNING: Files containing shared groups must be loaded before the files that
   use them.  While there are conventions to handle this, RSpec does _not_ do
@@ -27,7 +28,7 @@ Feature: shared examples
   2.  Put files containing shared examples in `spec/support/` and require files
       in that directory from `spec/spec_helper.rb`:
 
-          Dir["./spec/support/**/*.rb"].each {|f| require f}
+          Dir["./spec/support/**/*.rb"].sort.each {|f| require f}
 
       This is included in the generated `spec/spec_helper.rb` file in
       `rspec-rails`
@@ -37,7 +38,7 @@ Feature: shared examples
 
   Scenario: shared examples group included in two groups in one file
     Given a file named "collection_spec.rb" with:
-      """
+      """ruby
       require "set"
 
       shared_examples "a collection" do
@@ -99,7 +100,7 @@ Feature: shared examples
 
   Scenario: Providing context to a shared group using a block
     Given a file named "shared_example_group_spec.rb" with:
-    """
+    """ruby
     require "set"
 
     shared_examples "a collection object" do
@@ -107,7 +108,7 @@ Feature: shared examples
         it "adds objects to the end of the collection" do
           collection << 1
           collection << 2
-          collection.to_a.should eq([1,2])
+          expect(collection.to_a).to match_array([1, 2])
         end
       end
     end
@@ -141,7 +142,7 @@ Feature: shared examples
 
   Scenario: Passing parameters to a shared example group
     Given a file named "shared_example_group_params_spec.rb" with:
-    """
+    """ruby
     shared_examples "a measurable object" do |measurement, measurement_methods|
       measurement_methods.each do |measurement_method|
         it "should return #{measurement} from ##{measurement_method}" do
@@ -177,7 +178,7 @@ Feature: shared examples
 
   Scenario: Aliasing "it_should_behave_like" to "it_has_behavior"
     Given a file named "shared_example_group_spec.rb" with:
-      """
+      """ruby
       RSpec.configure do |c|
         c.alias_it_should_behave_like_to :it_has_behavior, 'has behavior:'
       end
@@ -201,4 +202,93 @@ Feature: shared examples
       String
         has behavior: sortability
           responds to <=>
+      """
+
+  Scenario: Sharing metadata automatically includes shared example groups
+    Given a file named "shared_example_metadata_spec.rb" with:
+      """ruby
+      shared_examples "shared stuff", :a => :b do
+        it 'runs wherever the metadata is shared' do
+        end
+      end
+
+      describe String, :a => :b do
+      end
+      """
+      When I run `rspec shared_example_metadata_spec.rb`
+      Then the output should contain:
+        """
+        1 example, 0 failures
+        """
+
+  Scenario: Shared examples are nestable by context
+    Given a file named "context_specific_examples_spec.rb" with:
+      """Ruby
+      describe "shared examples" do
+        context "per context" do
+
+          shared_examples "shared examples are nestable" do
+            specify { expect(true).to eq true }
+          end
+
+          it_behaves_like "shared examples are nestable"
+        end
+      end
+      """
+    When I run `rspec context_specific_examples_spec.rb`
+    Then the output should contain:
+      """
+      1 example, 0 failures
+      """
+
+  Scenario: Shared examples are accessible from offspring contexts
+    Given a file named "context_specific_examples_spec.rb" with:
+      """Ruby
+      describe "shared examples" do
+        shared_examples "shared examples are nestable" do
+          specify { expect(true).to eq true }
+        end
+
+        context "per context" do
+          it_behaves_like "shared examples are nestable"
+        end
+      end
+      """
+    When I run `rspec context_specific_examples_spec.rb`
+    Then the output should contain:
+      """
+      1 example, 0 failures
+      """
+    And the output should not contain:
+      """
+      Accessing shared_examples defined across contexts is deprecated
+      """
+
+  Scenario: Shared examples are isolated per context
+    Given a file named "isolated_shared_examples_spec.rb" with:
+      """Ruby
+      describe "shared examples" do
+        context do
+          shared_examples "shared examples are isolated" do
+            specify { expect(true).to eq true }
+          end
+        end
+
+        context do
+          it_behaves_like "shared examples are isolated"
+        end
+      end
+      """
+    When I run `rspec isolated_shared_examples_spec.rb`
+    Then the output should contain:
+      """
+      1 example, 0 failures
+      """
+    But the output should contain:
+      """
+      Accessing shared_examples defined across contexts is deprecated
+      """
+    And the output should contain:
+      """
+      isolated_shared_examples_spec.rb:9
       """

@@ -1,7 +1,8 @@
-require 'rspec/core'
+require 'rspec/core/backward_compatibility'
 require 'rspec/core/deprecation'
 require 'rake'
 require 'rake/tasklib'
+require 'shellwords'
 
 module RSpec
   module Core
@@ -29,7 +30,7 @@ module RSpec
       # @deprecated
       # Has no effect. The rake task now checks ENV['BUNDLE_GEMFILE'] instead.
       def gemfile=(*)
-        RSpec.deprecate("RSpec::Core::RakeTask#gemfile=", 'ENV["BUNDLE_GEMFILE"]')
+        RSpec.deprecate("RSpec::Core::RakeTask#gemfile=", :replacement => 'ENV["BUNDLE_GEMFILE"]')
       end
 
       # @deprecated
@@ -41,7 +42,7 @@ module RSpec
       # default:
       #   false
       def warning=(true_or_false)
-        RSpec.deprecate("RSpec::Core::RakeTask#warning=", 'ruby_opts="-w"')
+        RSpec.deprecate("RSpec::Core::RakeTask#warning=", :replacement => 'ruby_opts="-w"')
         @warning = true_or_false
       end
 
@@ -62,6 +63,9 @@ module RSpec
       attr_accessor :verbose
 
       # Use rcov for code coverage?
+      #
+      # Due to the many ways `rcov` can run, if this option is enabled, it is
+      # required that `require 'rspec/autorun'` appears in `spec_helper`.rb
       #
       # default:
       #   false
@@ -105,67 +109,78 @@ module RSpec
       # default:
       #   nil
       def spec_opts=(opts)
-        RSpec.deprecate('RSpec::Core::RakeTask#spec_opts=', 'rspec_opts=')
+        RSpec.deprecate('RSpec::Core::RakeTask#spec_opts=', :replacement => 'rspec_opts=')
         @rspec_opts = opts
       end
 
-      def initialize(*args)
-        @name = args.shift || :spec
-        @pattern, @rcov_path, @rcov_opts, @ruby_opts, @rspec_opts = nil, nil, nil, nil, nil
-        @warning, @rcov = false, false
-        @verbose, @fail_on_error = true, true
+      def initialize(*args, &task_block)
+        setup_ivars(args)
 
-        yield self if block_given?
+        desc "Run RSpec code examples" unless ::Rake.application.last_comment
 
-        @rcov_path  ||= 'rcov'
-        @rspec_path ||= 'rspec'
-        @pattern    ||= './spec{,/*/**}/*_spec.rb'
-
-        desc("Run RSpec code examples") unless ::Rake.application.last_comment
-
-        task name do
+        task name, *args do |_, task_args|
           RakeFileUtils.send(:verbose, verbose) do
-            if files_to_run.empty?
-              puts "No examples matching #{pattern} could be found"
-            else
-              begin
-                puts spec_command if verbose
-                success = system(spec_command)
-              rescue
-                puts failure_message if failure_message
-              end
-              raise("#{spec_command} failed") if fail_on_error unless success
-            end
+            task_block.call(*[self, task_args].slice(0, task_block.arity)) if task_block
+            run_task verbose
           end
         end
       end
 
+      def setup_ivars(args)
+        @name = args.shift || :spec
+        @rcov_opts, @ruby_opts, @rspec_opts = nil, nil, nil
+        @warning, @rcov = false, false
+        @verbose, @fail_on_error = true, true
+
+        @rcov_path  = 'rcov'
+        @rspec_path = 'rspec'
+        @pattern    = './spec{,/*/**}/*_spec.rb'
+      end
+
+      def run_task(verbose)
+        command = spec_command
+
+        begin
+          puts command if verbose
+          success = system(command)
+        rescue
+          puts failure_message if failure_message
+        end
+        abort("#{command} failed") if fail_on_error unless success
+      end
+
     private
+
+      if "".respond_to?(:shellescape)
+        def shellescape(string)
+          string.shellescape
+        end
+      else # 1.8.6's shellwords doesn't provide shellescape :(.
+        def shellescape(string)
+          string.gsub(/"/, '\"').gsub(/'/, "\\\\'")
+        end
+      end
 
       def files_to_run
         if ENV['SPEC']
-          FileList[ ENV['SPEC'] ]
+          FileList[ ENV['SPEC'] ].sort
         else
-          FileList[ pattern ].map { |f| f.gsub(/"/, '\"').gsub(/'/, "\\\\'") }
+          FileList[ pattern ].sort.map { |f| shellescape(f) }
         end
       end
 
       def spec_command
-        @spec_command ||= begin
-                            cmd_parts = []
-                            cmd_parts << RUBY
-                            cmd_parts << ruby_opts
-                            cmd_parts << "-w" if @warning
-                            cmd_parts << "-S" << runner
-                            cmd_parts << "-Ispec:lib" << rcov_opts if rcov
-                            cmd_parts << files_to_run
-                            cmd_parts << "--" if rcov && rspec_opts
-                            cmd_parts << rspec_opts
-                            cmd_parts.flatten.reject(&blank).join(" ")
-                          end
+        cmd_parts = []
+        cmd_parts << RUBY
+        cmd_parts << ruby_opts
+        cmd_parts << "-w" if @warning
+        cmd_parts << "-S" << runner
+        cmd_parts << "-Ispec:lib" << rcov_opts if rcov
+        cmd_parts << files_to_run
+        cmd_parts << "--" if rcov && rspec_opts
+        cmd_parts << rspec_opts
+        cmd_parts.flatten.reject(&blank).join(" ")
       end
-
-    private
 
       def runner
         rcov ? rcov_path : rspec_path

@@ -1,17 +1,267 @@
-### dev
-[full changelog](http://github.com/rspec/rspec-core/compare/v2.10.1...master)
+### 2.14.0.rc1 / 2013-05-27
+[full changelog](http://github.com/rspec/rspec-core/compare/v2.13.1...v2.14.0.rc1)
 
 Enhancements
 
-* `config.mock_with` and `config.expect_with` yield custom config object to a
-  block if given
-    * aids decoupling from rspec-core's configuation
-* Allow specifying multiple `--example` options. (Daniel Doubrovkine @dblock)
-* `subject(:article) { Article.new }`
+* Improved Windows detection inside Git Bash, for better `--color` handling.
+* Add profiling of the slowest example groups to `--profile` option.
+  The output is sorted by the slowest average example groups.
+* Don't show slow examples if there's a failure and both `--fail-fast`
+  and `--profile` options are used (Paweł Gościcki).
+* Rather than always adding `spec` to the load path, add the configured
+  `--default-path` to the load path (which defaults to `spec`). This
+  better supports folks who choose to put their specs in a different
+  directory (John Feminella).
+* Add some logic to test time duration precision. Make it a
+  function of time, dropping precision as the time increases. (Aaron Kromer)
+* Add new `backtrace_inclusion_patterns` config option. Backtrace lines
+  that match one of these patterns will _always_ be included in the
+  backtrace, even if they match an exclusion pattern, too (Sam Phippen).
+* Support ERB trim mode using the `-` when parsing `.rspec` as ERB
+  (Gabor Garami).
+* Give a better error message when let and subject are called without a block.
+  (Sam Phippen).
+* List the precedence of `.rspec-local` in the configuration documentation
+  (Sam Phippen)
+* Support `{a,b}` shell expansion syntax in `--pattern` option
+  (Konstantin Haase).
+* Add cucumber documentation for --require command line option
+  (Bradley Schaefer)
+* Expose configruation options via config:
+  * `config.libs` returns the libs configured to be added onto the load path
+  * `full_backtrace?` returns the state of the backtrace cleaner
+  * `debug?` returns true when the debugger is loaded
+  * `line_numbers` returns the line numbers we are filtering by (if any)
+  * `full_description` returns the RegExp used to filter descriptions
+  (Jon Rowe)
+* Add setters for RSpec.world and RSpec.configuration (Alex Soulim)
+* Configure ruby's warning behaviour with `--warnings` (Jon Rowe)
+* Fix an obscure issue on old versions of `1.8.7` where `Time.dup` wouldn't
+  allow access to `Time.now` (Jon Rowe)
+* Make `shared_examples_for` context aware, so that keys may be safely reused
+  in multiple contexts without colliding. (Jon Rowe)
+* Add a configurable `deprecation_stream` (Jon Rowe)
+* Publish deprecations through a formatter (David Chelimsky)
+
+Bug fixes
+
+* Make JSON formatter behave the same when it comes to `--profile` as
+  the text formatter (Paweł Gościcki).
+* Fix named subjects so that if an inner group defines a method that
+  overrides the named method, `subject` still retains the originally
+  declared value (Myron Marston).
+* Fix random ordering so that it does not cause `rand` in examples in
+  nested sibling contexts to return the same value (Max Shytikov).
+* Use the new `backtrace_inclusion_patterns` config option to ensure
+  that folks who develop code in a directory matching one of the default
+  exclusion patterns (e.g. `gems`) still get the normal backtrace
+  filtering (Sam Phippen).
+* Fix ordering of `before` hooks so that `before` hooks declared in
+  `RSpec.configure` run before `before` hooks declared in a shared
+  context (Michi Huber and Tejas Dinkar).
+* Fix `Example#full_description` so that it gets filled in by the last
+  matcher description (as `Example#description` already did) when no
+  doc string has been provided (David Chelimsky).
+* Fix the memoized methods (`let` and `subject`) leaking `define_method`
+  as a `public` method. (Thomas Holmes and Jon Rowe) (#873)
+* Fix warnings coming from the test suite. (Pete Higgins)
+
+Deprecations
+
+* Deprecate `Configuration#backtrace_clean_patterns` in favor of
+  `Configuration#backtrace_exclusion_patterns` for greater consistency
+  and symmetry with new `backtrace_inclusion_patterns` config option
+  (Sam Phippen).
+* Deprecate `Configuration#requires=` in favor of using ruby's
+  `require`. Requires specified by the command line can still be
+  accessed by the `Configuration#require` reader. (Bradley Schaefer)
+* Deprecate calling `SharedExampleGroups` defined across sibling contexts
+  (Jon Rowe)
+
+### 2.13.1 / 2013-03-12
+[full changelog](http://github.com/rspec/rspec-core/compare/v2.13.0...v2.13.1)
+
+Bug fixes
+
+* Use hook classes as proxies rather than extending hook blocks to support
+  lambdas for before/after/around hooks. (David Chelimsky)
+* Fix regression in 2.13.0 that caused confusing behavior when overriding
+  a named subject with an unnamed subject in an inner group and then
+  referencing the outer group subject's name. The fix for this required
+  us to disallow using `super` in a named subject (which is confusing,
+  anyway -- named subjects create 2 methods, so which method on the
+  parent example group are you `super`ing to?) but `super` in an unnamed
+  subject continues to work (Myron Marston).
+* Do not allow a referenced `let` or `subject` in `before(:all)` to cause
+  other `let` declarations to leak across examples (Myron Marston).
+* Work around odd ruby 1.9 bug with `String#match` that was triggered
+  by passing it a regex from a `let` declaration. For more info, see
+  http://bugs.ruby-lang.org/issues/8059 (Aaron Kromer).
+* Add missing `require 'set'` to `base_text_formatter.rb` (Tom
+  Anderson).
+
+Deprecations
+
+* Deprecate accessing `let` or `subject` declarations in `before(:all)`.
+  These were not intended to be called in a `before(:all)` hook, as
+  they exist to define state that is reset between each example, while
+  `before(:all)` exists to define state that is shared across examples
+  in an example group (Myron Marston).
+
+### 2.13.0 / 2013-02-23
+[full changelog](http://github.com/rspec/rspec-core/compare/v2.12.2...v2.13.0)
+
+Enhancements
+
+* Allow `--profile` option to take a count argument that
+  determines the number of slow examples to dump
+  (Greggory Rothmeier).
+* Add `subject!` that is the analog to `let!`. It defines an
+  explicit subject and sets a `before` hook that will invoke
+  the subject (Zubin Henner).
+* Fix `let` and `subject` declaration so that `super`
+  and `return` can be used in them, just like in a normal
+  method. (Myron Marston)
+* Allow output colors to be configured individually.
+  (Charlie Maffitt)
+* Always dump slow examples when `--profile` option is given,
+  even when an example failed (Myron Marston).
+
+Bug fixes
+
+* Don't blow up when dumping error output for instances
+  of anonymous error classes (Myron Marston).
+* Fix default backtrace filters so lines from projects
+  containing "gems" in the name are not filtered, but
+  lines from installed gems still are (Myron Marston).
+* Fix autotest command so that is uses double quotes
+  rather than single quotes for windows compatibility
+  (Jonas Tingeborn).
+* Fix `its` so that uses of `subject` in a `before` or `let`
+  declaration in the parent group continue to reference the
+  parent group's subject. (Olek Janiszewski)
+
+### 2.12.2 / 2012-12-13
+[full changelog](http://github.com/rspec/rspec-core/compare/v2.12.1...v2.12.2)
+
+Bug fixes
+
+* Fix `RSpec::Core::RakeTask` so that it is compatible with rake 0.8.7
+  on ruby 1.8.7. We had accidentally broke it in the 2.12 release
+  (Myron Marston).
+* Fix `RSpec::Core::RakeTask` so it is tolerant of the `Rspec` constant
+  for backwards compatibility (Patrick Van Stee)
+
+### 2.12.1 / 2012-12-01
+[full changelog](http://github.com/rspec/rspec-core/compare/v2.12.0...v2.12.1)
+
+Bug fixes
+
+* Specs are run even if another at\_exit hook calls `exit`. This allows
+  Test::Unit and RSpec to run together. (Suraj N. Kurapati)
+* Fix full doc string concatenation so that it handles the case of a
+  method string (e.g. "#foo") being nested under a context string
+  (e.g. "when it is tuesday"), so that we get "when it is tuesday #foo"
+  rather than "when it is tuesday#foo". (Myron Marston)
+* Restore public API I unintentionally broke in 2.12.0:
+  `RSpec::Core::Formatters::BaseFormatter#format_backtrce(backtrace, example)`
+  (Myron Marston).
+
+### 2.12.0 / 2012-11-12
+[full changelog](http://github.com/rspec/rspec-core/compare/v2.11.1...v2.12.0)
+
+Enhancements
+
+* Add support for custom ordering strategies for groups and examples.
+  (Myron Marston)
+* JSON Formatter (Alex Chaffee)
+* Refactor rake task internals (Sam Phippen)
+* Refactor HtmlFormatter (Pete Hodgson)
+* Autotest supports a path to Ruby that contains spaces (dsisnero)
+* Provide a helpful warning when a shared example group is redefined.
+  (Mark Burns).
+* `--default_path` can be specified as `--default-line`. `--line_number` can be
+  specified as `--line-number`. Hyphens are more idiomatic command line argument
+  separators (Sam Phippen).
+* A more useful error message is shown when an invalid command line option is
+  used (Jordi Polo).
+* Add `format_docstrings { |str| }` config option. It can be used to
+  apply formatting rules to example group and example docstrings.
+  (Alex Tan)
+* Add support for an `.rspec-local` options file. This is intended to
+  allow individual developers to set options in a git-ignored file that
+  override the common project options in `.rspec`. (Sam Phippen)
+* Support for mocha 0.13.0. (Andy Lindeman)
+
+Bug fixes
+
+* Remove override of `ExampleGroup#ancestors`. This is a core ruby method that
+  RSpec shouldn't override. Instead, define `ExampleGroup#parent_groups`. (Myron
+  Marston)
+* Limit monkey patching of shared example/context declaration methods
+  (`shared_examples_for`, etc.) to just the objects that need it rather than
+  every object in the system (Myron Marston).
+* Fix Metadata#fetch to support computed values (Sam Goldman).
+* Named subject can now be referred to from within subject block in a nested
+  group (tomykaira).
+* Fix `fail_fast` so that it properly exits when an error occurs in a
+  `before(:all) hook` (Bradley Schaefer).
+* Make the order spec files are loaded consistent, regardless of the
+  order of the files returned by the OS or the order passed at
+  the command line (Jo Liss and Sam Phippen).
+* Ensure instance variables from `before(:all)` are always exposed
+  from `after(:all)`, even if an error occurs in `before(:all)`
+  (Sam Phippen).
+* `rspec --init` no longer generates an incorrect warning about `--configure`
+  being deprecated (Sam Phippen).
+* Fix pluralization of `1 seconds` (Odin Dutton)
+* Fix ANSICON url (Jarmo Pertman)
+* Use dup of Time so reporting isn't clobbered by examples that modify Time
+  without properly restoring it. (David Chelimsky)
+
+Deprecations
+
+* `share_as` is no longer needed. `shared_context` and/or
+  `RSpec::SharedContext` provide better mechanisms (Sam Phippen).
+* Deprecate `RSpec.configuration` with a block (use `RSpec.configure`).
+
+
+### 2.11.1 / 2012-07-18
+[full changelog](http://github.com/rspec/rspec-core/compare/v2.11.0...v2.11.1)
+
+Bug fixes
+
+* Fix the way we autoload RSpec::Matchers so that custom matchers can be
+  defined before rspec-core has been configured to definitely use
+  rspec-expectations. (Myron Marston)
+* Fix typo in --help message printed for -e option. (Jo Liss)
+* Fix ruby warnings. (Myron Marston)
+* Ignore mock expectation failures when the example has already failed.
+  Mock expectation failures have always been ignored in this situation,
+  but due to my changes in 27059bf1 it was printing a confusing message.
+  (Myron Marston).
+
+### 2.11.0 / 2012-07-07
+[full changelog](http://github.com/rspec/rspec-core/compare/v2.10.1...v2.11.0)
+
+Enhancements
+
+* Support multiple `--example` options. (Daniel Doubrovkine @dblock)
+* Named subject e.g. `subject(:article) { Article.new }`
     * see [http://blog.davidchelimsky.net/2012/05/13/spec-smell-explicit-use-of-subject/](http://blog.davidchelimsky.net/2012/05/13/spec-smell-explicit-use-of-subject/)
       for background.
     * thanks to Bradley Schaefer for suggesting it and Avdi Grimm for almost
       suggesting it.
+* `config.mock_with` and `config.expect_with` yield custom config object to a
+  block if given
+    * aids decoupling from rspec-core's configuation
+* `include_context` and `include_examples` support a block, which gets eval'd
+  in the current context (vs the nested context generated by `it_behaves_like`).
+* Add `config.order = 'random'` to the `spec_helper.rb` generated by `rspec
+  --init`.
+* Delay the loading of DRb (Myron Marston).
+* Limit monkey patching of `describe` onto just the objects that need it rather
+  than every object in the system (Myron Marston).
 
 Bug fixes
 
@@ -22,6 +272,7 @@ Bug fixes
   the user got no feedback about what happened. (Myron Marston)
 * `--require` and `-I` are merged among different configuration sources (Andy
   Lindeman)
+* Delegate to mocha methods instead of aliasing them in mocha adapter.
 
 ### 2.10.1 / 2012-05-19
 [full changelog](http://github.com/rspec/rspec-core/compare/v2.10.0...v2.10.1)

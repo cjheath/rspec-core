@@ -13,13 +13,33 @@ module RSpec::Core
 
     def parse!(args)
       return {} if args.empty?
-      if args.include?("--formatter")
-        RSpec.deprecate("the --formatter option", "-f or --format")
-        args[args.index("--formatter")] = "--format"
-      end
+
+      convert_deprecated_args(args)
+
       options = args.delete('--tty') ? {:tty => true} : {}
-      parser(options).parse!(args)
+      begin
+        parser(options).parse!(args)
+      rescue OptionParser::InvalidOption => e
+        abort "#{e.message}\n\nPlease use --help for a listing of valid options"
+      end
+
       options
+    end
+
+    def convert_deprecated_args(args)
+      args.map! { |arg|
+        case arg
+        when "--formatter"
+          RSpec.deprecate("the --formatter option", :replacement => "-f or --format")
+          "--format"
+        when "--default_path"
+          "--default-path"
+        when "--line_number"
+          "--line-number"
+        else
+          arg
+        end
+      }
     end
 
     alias_method :parse, :parse!
@@ -92,13 +112,14 @@ module RSpec::Core
                 '  [d]ocumentation (group and example names)',
                 '  [h]tml',
                 '  [t]extmate',
+                '  [j]son',
                 '  custom formatter class name') do |o|
           options[:formatters] ||= []
           options[:formatters] << [o]
         end
 
         parser.on('-o', '--out FILE',
-                  'Write output to a file instead of STDOUT. This option applies',
+                  'Write output to a file instead of $stdout. This option applies',
                   '  to the previously specified --format, or the default format',
                   '  if no format is specified.'
                  ) do |o|
@@ -114,8 +135,18 @@ module RSpec::Core
           options[:color] = o
         end
 
-        parser.on('-p', '--profile', 'Enable profiling of examples and list 10 slowest examples.') do |o|
-          options[:profile_examples] = o
+        parser.on('-p', '--[no-]profile [COUNT]', 'Enable profiling of examples and list the slowest examples (default: 10).') do |argument|
+          options[:profile_examples] = if argument.nil?
+                                         true
+                                       elsif argument == false
+                                         false
+                                       else
+                                         argument.to_i
+                                       end
+        end
+
+        parser.on('-w', '--warnings', 'Enable ruby warnings') do
+          options[:warnings] = true
         end
 
         parser.on('-T', '--twist FILE/DIR', 'Use Twister to mutation test the specified files/directories') do |o|
@@ -138,12 +169,12 @@ FILTERING
           options[:pattern] = o
         end
 
-        parser.on('-e', '--example STRING', "Run examples whose full nested names include STRING (may be',
-                                              '  used more than once)") do |o|
+        parser.on('-e', '--example STRING', "Run examples whose full nested names include STRING (may be",
+                                            "  used more than once)") do |o|
           (options[:full_description] ||= []) << Regexp.compile(Regexp.escape(o))
         end
 
-        parser.on('-l', '--line_number LINE', 'Specify line number of an example or group (may be',
+        parser.on('-l', '--line-number LINE', 'Specify line number of an example or group (may be',
                                               '  used more than once).') do |o|
           (options[:line_numbers] ||= []) << o
         end
@@ -162,7 +193,7 @@ FILTERING
           options[filter_type][name] = value.nil? ? true : eval(value) rescue value
         end
 
-        parser.on('--default_path PATH', 'Set the default path where RSpec looks for examples (can',
+        parser.on('--default-path PATH', 'Set the default path where RSpec looks for examples (can',
                                          '  be a path to a file or a directory).') do |path|
           options[:default_path] = path
         end

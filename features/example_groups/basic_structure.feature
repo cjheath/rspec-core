@@ -14,10 +14,10 @@ Feature: basic structure (describe/it)
   Under the hood, an example group is a class in which the block passed to
   `describe` or `context` is evaluated. The blocks passed to `it` are evaluated
   in the context of an _instance_ of that class.
-  
+
   Scenario: one group, one example
     Given a file named "sample_spec.rb" with:
-    """
+    """ruby
     describe "something" do
       it "does something" do
       end
@@ -32,7 +32,7 @@ Feature: basic structure (describe/it)
 
   Scenario: nested example groups (using context)
     Given a file named "nested_example_groups_spec.rb" with:
-    """
+    """ruby
     describe "something" do
       context "in one context" do
         it "does one thing" do

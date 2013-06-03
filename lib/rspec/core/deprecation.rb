@@ -1,36 +1,29 @@
 module RSpec
-  class << self
-    # @private
-    #
-    # Used internally to print deprecation warnings
-    def deprecate(method, alternate_method=nil, version=nil)
-      version_string = version ? "rspec-#{version}" : "a future version of RSpec"
-
-      message = <<-NOTICE
-
-*****************************************************************
-DEPRECATION WARNING: you are using deprecated behaviour that will
-be removed from #{version_string}.
-
-#{caller(0)[2]}
-
-* #{method} is deprecated.
-NOTICE
-      if alternate_method
-        message << <<-ADDITIONAL
-* please use #{alternate_method} instead.
-ADDITIONAL
+  module Core
+    module Deprecation
+      # @private
+      #
+      # Used internally to print deprecation warnings
+      def deprecate(deprecated, replacement_or_hash={}, ignore_version=nil)
+        # Temporarily support old and new APIs while we transition the other
+        # rspec libs to use a hash for the 2nd arg and no version arg
+        data = Hash === replacement_or_hash ? replacement_or_hash : { :replacement => replacement_or_hash }
+        RSpec.configuration.reporter.deprecation(
+          {
+            :deprecated => deprecated,
+            :call_site => caller(0)[2]
+          }.merge(data)
+        )
       end
 
-      message << "*****************************************************************"
-      warn_deprecation(message)
-    end
-
-    # @private
-    #
-    # Used internally to print deprecation warnings
-    def warn_deprecation(message)
-      send :warn, message
+      # @private
+      #
+      # Used internally to print deprecation warnings
+      def warn_deprecation(message)
+        RSpec.configuration.reporter.deprecation :message => message
+      end
     end
   end
+
+  extend(Core::Deprecation)
 end

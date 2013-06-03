@@ -1,11 +1,14 @@
 module RSpec::Core
   class Reporter
-    def initialize(*formatters)
-      @formatters = formatters
-      prepare
-    end
+    NOTIFICATIONS = %W[start message example_group_started example_group_finished example_started
+                       example_passed example_failed example_pending start_dump dump_pending
+                       dump_failures dump_summary seed close stop deprecation deprecation_summary].map(&:to_sym)
 
-    def prepare
+    def initialize(*formatters)
+      @listeners = Hash.new { |h,k| h[k] = [] }
+      formatters.each do |formatter|
+        register_listener(formatter, *NOTIFICATIONS)
+      end
       @example_count = @failure_count = @pending_count = 0
       @duration = @start = nil
       @terse_mode = false
@@ -14,6 +17,23 @@ module RSpec::Core
     def prepare_terse
       prepare
       @terse_mode = true
+    end
+
+    # @api
+    # @param [Object] An obect that wishes to be notified of reporter events
+    # @param [Array] Array of symbols represents the events a listener wishes to subscribe too
+    #
+    # Registers a listener to a list of notifications. The reporter will send notification of
+    # events to all registered listeners
+    def register_listener(listener, *notifications)
+      notifications.each do |notification|
+        @listeners[notification.to_sym] << listener if listener.respond_to?(notification)
+      end
+      true
+    end
+
+    def registered_listeners(notification)
+      @listeners[notification]
     end
 
     # @api
@@ -48,7 +68,7 @@ module RSpec::Core
     end
 
     def start(expected_example_count)
-      @start = Time.now
+      @start = RSpec::Core::Time.now
       notify :start, expected_example_count
     end
 
@@ -83,6 +103,10 @@ module RSpec::Core
       notify :example_pending, example unless @terse_mode
     end
 
+    def deprecation(message)
+      notify :deprecation, message
+    end
+
     def finish(seed)
       begin
         stop
@@ -92,6 +116,7 @@ module RSpec::Core
           notify :dump_failures
         end
         notify :dump_summary, @duration, @example_count, @failure_count, @pending_count
+        notify :deprecation_summary
         notify :seed, seed if seed
       ensure
         notify :close
@@ -101,13 +126,13 @@ module RSpec::Core
     alias_method :abort, :finish
 
     def stop
-      @duration = Time.now - @start if @start
+      @duration = (RSpec::Core::Time.now - @start).to_f if @start
       notify :stop
     end
 
-    def notify(method, *args, &block)
-      @formatters.each do |formatter|
-        formatter.send method, *args, &block
+    def notify(event, *args, &block)
+      registered_listeners(event).each do |formatter|
+        formatter.send(event, *args, &block)
       end
     end
   end

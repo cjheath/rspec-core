@@ -21,9 +21,13 @@ Feature: before and after hooks
   `before` and `after` hooks can be defined directly in the example groups they
   should run in, or in a global RSpec.configure block.
 
+  Setting instance variables are not supported in `before(:suite)`.
+
+  Mocks are only supported in `before(:each)`.
+
   Scenario: define before(:each) block
     Given a file named "before_each_spec.rb" with:
-      """
+      """ruby
       require "rspec/expectations"
 
       class Thing
@@ -57,7 +61,7 @@ Feature: before and after hooks
 
   Scenario: define before(:all) block in example group
     Given a file named "before_all_spec.rb" with:
-      """
+      """ruby
       require "rspec/expectations"
 
       class Thing
@@ -65,21 +69,21 @@ Feature: before and after hooks
           @widgets ||= []
         end
       end
-  
+
       describe Thing do
         before(:all) do
           @thing = Thing.new
         end
-  
+
         describe "initialized in before(:all)" do
           it "has 0 widgets" do
             @thing.should have(0).widgets
           end
-  
+
           it "can get accept new widgets" do
             @thing.widgets << Object.new
           end
-  
+
           it "shares state across examples" do
             @thing.should have(1).widgets
           end
@@ -94,7 +98,7 @@ Feature: before and after hooks
 
   Scenario: failure in before(:all) block
     Given a file named "before_all_spec.rb" with:
-      """
+      """ruby
       describe "an error in before(:all)" do
         before(:all) do
           raise "oops"
@@ -149,7 +153,7 @@ Feature: before and after hooks
 
   Scenario: failure in after(:all) block
     Given a file named "after_all_spec.rb" with:
-      """
+      """ruby
       describe "an error in after(:all)" do
         after(:all) do
           raise StandardError.new("Boom!")
@@ -172,7 +176,7 @@ Feature: before and after hooks
 
   Scenario: define before and after blocks in configuration
     Given a file named "befores_in_configuration_spec.rb" with:
-      """
+      """ruby
       require "rspec/expectations"
 
       RSpec.configure do |config|
@@ -183,7 +187,7 @@ Feature: before and after hooks
           @before_all = "before all"
         end
       end
-  
+
       describe "stuff in before blocks" do
         describe "with :all" do
           it "should be available in the example" do
@@ -202,28 +206,28 @@ Feature: before and after hooks
 
   Scenario: before/after blocks are run in order
     Given a file named "ensure_block_order_spec.rb" with:
-      """
+      """ruby
       require "rspec/expectations"
 
       describe "before and after callbacks" do
         before(:all) do
           puts "before all"
         end
-  
+
         before(:each) do
           puts "before each"
         end
-  
+
         after(:each) do
           puts "after each"
         end
-  
+
         after(:all) do
           puts "after all"
         end
-  
+
         it "gets run in order" do
-  
+
         end
       end
       """
@@ -235,38 +239,38 @@ Feature: before and after hooks
       after each
       .after all
       """
-  
+
   Scenario: before/after blocks defined in config are run in order
     Given a file named "configuration_spec.rb" with:
-      """
+      """ruby
       require "rspec/expectations"
 
       RSpec.configure do |config|
         config.before(:suite) do
           puts "before suite"
         end
-  
+
         config.before(:all) do
           puts "before all"
         end
-  
+
         config.before(:each) do
           puts "before each"
         end
-  
+
         config.after(:each) do
           puts "after each"
         end
-  
+
         config.after(:all) do
           puts "after all"
         end
-  
+
         config.after(:suite) do
           puts "after suite"
         end
       end
-  
+
       describe "ignore" do
         example "ignore" do
         end
@@ -285,12 +289,12 @@ Feature: before and after hooks
 
   Scenario: before/after all blocks are run once
     Given a file named "before_and_after_all_spec.rb" with:
-      """
+      """ruby
       describe "before and after callbacks" do
         before(:all) do
           puts "outer before all"
         end
-  
+
         example "in outer group" do
         end
 
@@ -302,7 +306,7 @@ Feature: before and after hooks
           before(:all) do
             puts "inner before all"
           end
-          
+
           example "in nested group" do
           end
 
@@ -343,7 +347,7 @@ Feature: before and after hooks
 
   Scenario: nested examples have access to state set in outer before(:all)
     Given a file named "before_all_spec.rb" with:
-      """
+      """ruby
       describe "something" do
         before :all do
           @value = 123
@@ -373,7 +377,7 @@ Feature: before and after hooks
 
   Scenario: before/after all blocks have access to state
     Given a file named "before_and_after_all_spec.rb" with:
-      """
+      """ruby
       describe "before and after callbacks" do
         before(:all) do
           @outer_state = "set in outer before all"
@@ -408,7 +412,7 @@ Feature: before and after hooks
 
   Scenario: exception in before(:each) is captured and reported as failure
     Given a file named "error_in_before_each_spec.rb" with:
-      """
+      """ruby
       describe "error in before(:each)" do
         before(:each) do
           raise "this error"

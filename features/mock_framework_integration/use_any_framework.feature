@@ -5,21 +5,21 @@ Feature: mock with an alternative framework
   to provide an adapter that hooks RSpec's events into those of the framework.
 
   A mock framework adapter must expose three methods:
-    
-  * setup_mocks_for_rspec
+
+  * `setup_mocks_for_rspec`
     * called before each example is run
-  * verify_mocks_for_rspec 
+  * `verify_mocks_for_rspec`
     * called after each example is run
     * this is where message expectation failures should result in an error with
       the appropriate failure message
-  * teardown_mocks_for_rspec 
-    * called after verify_mocks_for_rspec
+  * `teardown_mocks_for_rspec`
+    * called after `verify_mocks_for_rspec`
     * use this to clean up resources, restore objects to earlier state, etc
     * guaranteed to run even if there are failures
 
   Scenario: Mock with alternate framework
     Given a file named "expector.rb" with:
-      """
+      """ruby
       class Expector
         class << self
           def expectors
@@ -78,9 +78,9 @@ Feature: mock with an alternative framework
         end
       end
       """
-      
+
     Given a file named "example_spec.rb" with:
-      """
+      """ruby
       require File.expand_path("../expector", __FILE__)
 
       RSpec.configure do |config|
@@ -102,5 +102,5 @@ Feature: mock with an alternative framework
       """
     When I run `rspec example_spec.rb --format doc`
     Then the exit status should be 1
-    And the output should contain "2 examples, 1 failure" 
-    And the output should contain "fails when message is received (FAILED - 1)" 
+    And the output should contain "2 examples, 1 failure"
+    And the output should contain "fails when message is received (FAILED - 1)"

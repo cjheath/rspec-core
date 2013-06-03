@@ -19,24 +19,43 @@ module RSpec::Core
       task.__send__(:spec_command)
     end
 
+    context "with a name passed to the constructor" do
+      let(:task) { RakeTask.new(:task_name) }
+
+      it "correctly sets the name" do
+        expect(task.name).to eq :task_name
+      end
+    end
+
+    context "with args passed to the rake task" do
+      it "correctly passes along task arguments" do
+        task = RakeTask.new(:rake_task_args, :files) do |t, args|
+          expect(args[:files]).to eq "first_spec.rb"
+        end
+
+        task.should_receive(:run_task) { true }
+        expect(Rake.application.invoke_task("rake_task_args[first_spec.rb]")).to be_true
+      end
+    end
+
     context "default" do
       it "renders rspec" do
-        spec_command.should =~ /^#{ruby} -S rspec/
+        expect(spec_command).to match(/^#{ruby} -S rspec/)
       end
     end
 
     context "with rcov" do
       it "renders rcov" do
-          with_rcov do
-            spec_command.should =~ /^#{ruby} -S rcov/
-          end
+        with_rcov do
+          expect(spec_command).to match(/^#{ruby} -S rcov/)
         end
+      end
     end
 
     context "with ruby options" do
       it "renders them before -S" do
           task.ruby_opts = "-w"
-          spec_command.should =~ /^#{ruby} -w -S rspec/
+          expect(spec_command).to match(/^#{ruby} -w -S rspec/)
       end
     end
 
@@ -44,7 +63,7 @@ module RSpec::Core
       context "with rcov=false (default)" do
         it "does not add the rcov options to the command" do
           task.rcov_opts = '--exclude "mocks"'
-          spec_command.should_not =~ /--exclude "mocks"/
+          expect(spec_command).not_to match(/--exclude "mocks"/)
         end
       end
 
@@ -52,13 +71,13 @@ module RSpec::Core
         it "renders them after rcov" do
           task.rcov = true
           task.rcov_opts = '--exclude "mocks"'
-          spec_command.should =~ /rcov.*--exclude "mocks"/
+          expect(spec_command).to match(/rcov.*--exclude "mocks"/)
         end
 
         it "ensures that -Ispec:lib is in the resulting command" do
           task.rcov = true
           task.rcov_opts = '--exclude "mocks"'
-          spec_command.should =~ /rcov.*-Ispec:lib/
+          expect(spec_command).to match(/rcov.*-Ispec:lib/)
         end
       end
     end
@@ -69,42 +88,66 @@ module RSpec::Core
           task.stub(:files_to_run) { "this.rb that.rb" }
           task.rcov = true
           task.rspec_opts = "-Ifoo"
-          spec_command.should =~ /this.rb that.rb -- -Ifoo/
+          expect(spec_command).to match(/this.rb that.rb -- -Ifoo/)
         end
       end
       context "with rcov=false (default)" do
         it "adds the rspec_opts" do
           task.rspec_opts = "-Ifoo"
-          spec_command.should =~ /rspec.*-Ifoo/
+          expect(spec_command).to match(/rspec.*-Ifoo/)
         end
       end
     end
 
-    context "with SPEC=path/to/file" do
-      before do
-        @orig_spec = ENV["SPEC"]
-        ENV["SPEC"] = "path/to/file"
+    def specify_consistent_ordering_of_files_to_run(pattern, task)
+      orderings = [
+        %w[ a/1.rb a/2.rb a/3.rb ],
+        %w[ a/2.rb a/1.rb a/3.rb ],
+        %w[ a/3.rb a/2.rb a/1.rb ]
+      ].map do |files|
+        FileList.should_receive(:[]).with(pattern) { files }
+        task.__send__(:files_to_run)
       end
 
-      after do
-        ENV["SPEC"] = @orig_spec
-      end
+      expect(orderings.uniq.size).to eq(1)
+    end
 
+    context "with SPEC env var set" do
       it "sets files to run" do
-        task.__send__(:files_to_run).should eq(["path/to/file"])
+        with_env_vars 'SPEC' => 'path/to/file' do
+          expect(task.__send__(:files_to_run)).to eq(["path/to/file"])
+        end
+      end
+
+      it "sets the files to run in a consistent order, regardless of the underlying FileList ordering" do
+        with_env_vars 'SPEC' => 'a/*.rb' do
+          specify_consistent_ordering_of_files_to_run('a/*.rb', task)
+        end
       end
     end
 
-    context "with paths with quotes" do
-      it "escapes the quotes" do
-        task = RakeTask.new do |t|
-          t.pattern = File.join(Dir.tmpdir, "*spec.rb")
-        end
-        ["first_spec.rb", "second_\"spec.rb", "third_\'spec.rb"].each do |file_name|
+    it "sets the files to run in a consistent order, regardless of the underlying FileList ordering" do
+      task = RakeTask.new(:consistent_file_order) do |t|
+        t.pattern = 'a/*.rb'
+      end
+
+      # since the config block is deferred til task invocation, must fake
+      # calling the task so the expected pattern is picked up
+      task.should_receive(:run_task) { true }
+      expect(Rake.application.invoke_task(task.name)).to be_true
+
+      specify_consistent_ordering_of_files_to_run('a/*.rb', task)
+    end
+
+    context "with paths with quotes or spaces" do
+      it "escapes the quotes and spaces" do
+        task.pattern = File.join(Dir.tmpdir, "*spec.rb")
+        ["first_spec.rb", "second_\"spec.rb", "third_\'spec.rb", "fourth spec.rb"].each do |file_name|
           FileUtils.touch(File.join(Dir.tmpdir, file_name))
         end
-        task.__send__(:files_to_run).sort.should eq([
+        expect(task.__send__(:files_to_run).sort).to eq([
           File.join(Dir.tmpdir, "first_spec.rb"),
+          File.join(Dir.tmpdir, "fourth\\ spec.rb"),
           File.join(Dir.tmpdir, "second_\\\"spec.rb"),
           File.join(Dir.tmpdir, "third_\\\'spec.rb")
         ])
@@ -127,7 +170,7 @@ module RSpec::Core
         FileUtils.ln_s bars_dir, File.join(project_dir, "spec/bars")
 
         FileUtils.cd(project_dir) do
-          RakeTask.new.__send__(:files_to_run).sort.should eq([
+          expect(RakeTask.new.__send__(:files_to_run).sort).to eq([
             "./spec/bars/bar_spec.rb",
             "./spec/foos/foo_spec.rb"
           ])

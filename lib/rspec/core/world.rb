@@ -4,26 +4,25 @@ module RSpec
 
       include RSpec::Core::Hooks
 
-      attr_reader :example_groups, :shared_example_groups, :filtered_examples
+      attr_reader :example_groups, :filtered_examples
       attr_accessor :wants_to_quit
 
       def initialize(configuration=RSpec.configuration)
         @configuration = configuration
-        @example_groups = [].extend(Extensions::Ordered)
-        @shared_example_groups = {}
+        @example_groups = [].extend(Extensions::Ordered::ExampleGroups)
         @filtered_examples = Hash.new { |hash,group|
           hash[group] = begin
             examples = group.examples.dup
             examples = filter_manager.prune(examples)
             examples.uniq
-            examples.extend(Extensions::Ordered)
+            examples.extend(Extensions::Ordered::Examples)
           end
         }
       end
 
       def reset
         example_groups.clear
-        shared_example_groups.clear
+        SharedExampleGroup::Registry.clear
       end
 
       def filter_manager

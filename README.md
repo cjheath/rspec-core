@@ -1,8 +1,8 @@
-# rspec-core [![Build Status](https://secure.travis-ci.org/rspec/rspec-core.png?branch=master)](http://travis-ci.org/rspec/rspec-core) [![Code Climate](https://codeclimate.com/badge.png)](https://codeclimate.com/github/rspec/rspec-core)
+# rspec-core [![Build Status](https://secure.travis-ci.org/rspec/rspec-core.png?branch=master)](http://travis-ci.org/rspec/rspec-core) [![Code Climate](https://codeclimate.com/github/rspec/rspec-core.png)](https://codeclimate.com/github/rspec/rspec-core)
 
 rspec-core provides the structure for writing executable examples of how your
 code should behave, and an `rspec` command with tools to constrain which
-examples get run and taylor the output.
+examples get run and tailor the output.
 
 ## install
 
@@ -28,7 +28,7 @@ describe Order do
       :price => Money.new(2.22, :USD),
       :quantity => 2
     )))
-    order.total.should eq(Money.new(5.55, :USD))
+    expect(order.total).to eq(Money.new(5.55, :USD))
   end
 end
 ```
@@ -77,7 +77,7 @@ in any group using `include_examples`.
 ```ruby
 shared_examples "collections" do |collection_class|
   it "is empty when first created" do
-    collection_class.new.should be_empty
+    expect(collection_class.new).to be_empty
   end
 end
 
@@ -102,7 +102,7 @@ etc, but no examples.
 ## metadata
 
 rspec-core stores a metadata hash with every example and group, which
-contains like their descriptions, the locations at which they were
+contains their descriptions, the locations at which they were
 declared, etc, etc. This hash powers many of rspec-core's features,
 including output formatters (which access descriptions and locations),
 and filtering before and after hooks.
@@ -112,7 +112,7 @@ extension, you can access it from an example like this:
 
 ```ruby
 it "does something" do
-  example.metadata[:description].should eq("does something")
+  expect(example.metadata[:description]).to eq("does something")
 end
 ```
 
@@ -125,19 +125,19 @@ using the `described_class` method, which is a wrapper for
 ```ruby
 describe Widget do
   example do
-    described_class.should equal(Widget)
+    expect(described_class).to equal(Widget)
   end
 end
 ```
 
 This is useful in extensions or shared example groups in which the specific
-class is unknown. Taking the shared examples example from above, we can
+class is unknown. Taking the collections shared example group from above, we can
 clean it up a bit using `described_class`:
 
 ```ruby
 shared_examples "collections" do
   it "is empty when first created" do
-    described.new.should be_empty
+    expect(described_class.new).to be_empty
   end
 end
 
@@ -153,7 +153,8 @@ end
 ## the `rspec` command
 
 When you install the rspec-core gem, it installs the `rspec` executable,
-which you'll use to run rspec. The `rspec` comes with many useful options.
+which you'll use to run rspec. The `rspec` command comes with many useful
+options.
 Run `rspec --help` to see the complete list.
 
 ## store command line options `.rspec`
@@ -167,6 +168,28 @@ the command line.
 rspec-core ships with an Autotest extension, which is loaded automatically if
 there is a `.rspec` file in the project's root directory.
 
+## rcov integration
+
+rcov is best integrated via the [rcov rake
+task](http://www.rubydoc.info/github/relevance/rcov/master/Rcov/RcovTask).
+
+rcov can also be integrated via the rspec rake task, but it requires a bit
+more setup:
+
+```ruby
+# Rakefile
+require 'rspec/core/rake_task'
+
+RSpec::Core::RakeTask.new(:spec) do |config|
+  config.rcov = true
+end
+
+task :default => :spec
+
+# spec/spec_helper.rb
+require 'rspec/autorun' # **add this**
+```
+
 ## get started
 
 Start with a simple example of behavior you expect from your system. Do
@@ -175,8 +198,10 @@ this before you write any implementation code:
 ```ruby
 # in spec/calculator_spec.rb
 describe Calculator do
-  it "add(x,y) returns the sum of its arguments" do
-    Calculator.new.add(1, 2).should eq(3)
+  describe '#add' do
+    it 'returns the sum of its arguments' do
+      expect(Calculator.new.add(1, 2)).to eq(3)
+    end
   end
 end
 ```
@@ -221,8 +246,9 @@ Use the `documentation` formatter to see the resulting spec:
 
 ```
 $ rspec spec/calculator_spec.rb --format doc
-Calculator add
-  returns the sum of its arguments
+Calculator
+  #add
+    returns the sum of its arguments
 
 Finished in 0.000379 seconds
 1 example, 0 failures

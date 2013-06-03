@@ -15,13 +15,12 @@ module RSpec
     class ExampleGroup
       extend  MetadataHashBuilder::WithDeprecationWarning
       extend  Extensions::ModuleEvalWithArgs
-      extend  Subject::ExampleGroupMethods
       extend  Hooks
 
+      include MemoizedHelpers
       include Extensions::InstanceEvalWithArgs
-      include Subject::ExampleMethods
       include Pending
-      include Let
+      include SharedExampleGroup
 
       # @private
       def self.world
@@ -43,7 +42,12 @@ module RSpec
           end
         end
 
-        delegate_to_metadata :description, :described_class, :file_path
+        def description
+          description = metadata[:example_group][:description]
+          RSpec.configuration.format_docstrings_block.call(description)
+        end
+
+        delegate_to_metadata :described_class, :file_path
         alias_method :display_name, :description
         # @private
         alias_method :describes, :described_class
@@ -54,15 +58,14 @@ module RSpec
         #   @param [Hash] extra_options
         #   @param [Block] implementation
         def self.define_example_method(name, extra_options={})
-          module_eval(<<-END_RUBY, __FILE__, __LINE__)
-            def #{name}(desc=nil, *args, &block)
-              options = build_metadata_hash_from(args)
-              options.update(:pending => RSpec::Core::Pending::NOT_YET_IMPLEMENTED) unless block
-              options.update(#{extra_options.inspect})
-              examples << RSpec::Core::Example.new(self, desc, options, block)
-              examples.last
-            end
-          END_RUBY
+          define_method(name) do |*all_args, &block|
+            desc, *args = *all_args
+            options = build_metadata_hash_from(args)
+            options.update(:pending => RSpec::Core::Pending::NOT_YET_IMPLEMENTED) unless block
+            options.update(extra_options)
+            examples << RSpec::Core::Example.new(self, desc, options, block)
+            examples.last
+          end
         end
 
         # Defines an example within a group.
@@ -106,16 +109,14 @@ module RSpec
         # @macro [attach] define_nested_shared_group_method
         #
         #   @see SharedExampleGroup
-        def self.define_nested_shared_group_method(new_name, report_label=nil)
-          module_eval(<<-END_RUBY, __FILE__, __LINE__)
-            def #{new_name}(name, *args, &customization_block)
-              group = describe("#{report_label || "it should behave like"} \#{name}") do
-                find_and_eval_shared("examples", name, *args, &customization_block)
-              end
-              group.metadata[:shared_group_name] = name
-              group
+        def self.define_nested_shared_group_method(new_name, report_label="it should behave like")
+          define_method(new_name) do |name, *args, &customization_block|
+            group = describe("#{report_label} #{name}") do
+              find_and_eval_shared("examples", name, *args, &customization_block)
             end
-          END_RUBY
+            group.metadata[:shared_group_name] = name
+            group
+          end
         end
 
         # Generates a nested example group and includes the shared content
@@ -158,7 +159,7 @@ module RSpec
       # @private
       def self.find_and_eval_shared(label, name, *args, &customization_block)
         raise ArgumentError, "Could not find shared #{label} #{name.inspect}" unless
-        shared_block = world.shared_example_groups[name]
+        shared_block = shared_example_groups[name]
 
         module_eval_with_args(*args, &shared_block)
         module_eval(&customization_block) if customization_block
@@ -241,7 +242,7 @@ module RSpec
 
       # @private
       def self.children
-        @children ||= [].extend(Extensions::Ordered)
+        @children ||= [].extend(Extensions::Ordered::ExampleGroups)
       end
 
       # @private
@@ -249,9 +250,9 @@ module RSpec
         @_descendants ||= [self] + children.inject([]) {|list, c| list + c.descendants}
       end
 
-      # @private
-      def self.ancestors
-        @_ancestors ||= super().select {|a| a < RSpec::Core::ExampleGroup}
+      ## @private
+      def self.parent_groups
+        @parent_groups ||= ancestors.select {|a| a < RSpec::Core::ExampleGroup}
       end
 
       # @private
@@ -283,8 +284,8 @@ module RSpec
         args << build_metadata_hash_from(args)
         args.unshift(symbol_description) if symbol_description
         @metadata = RSpec::Core::Metadata.new(superclass_metadata).process(*args)
-        world.configure_group(self)
         hooks.register_globals(self, RSpec.configuration.hooks)
+        world.configure_group(self)
       end
 
       # @private
@@ -295,6 +296,7 @@ module RSpec
       # @private
       def self.store_before_all_ivars(example_group_instance)
         return if example_group_instance.instance_variables.empty?
+
         example_group_instance.instance_variables.each { |ivar|
           before_all_ivars[ivar] = example_group_instance.instance_variable_get(ivar)
         }
@@ -308,9 +310,15 @@ module RSpec
       # @private
       def self.run_before_all_hooks(example_group_instance)
         return if descendant_filtered_examples.empty?
-        assign_before_all_ivars(superclass.before_all_ivars, example_group_instance)
-        run_hook(:before, :all, example_group_instance)
-        store_before_all_ivars(example_group_instance)
+        begin
+          assign_before_all_ivars(superclass.before_all_ivars, example_group_instance)
+
+          BeforeAllMemoizedHash.isolate_for_before_all(example_group_instance) do
+            run_hook(:before, :all, example_group_instance)
+          end
+        ensure
+          store_before_all_ivars(example_group_instance)
+        end
       end
 
       # @private
@@ -361,6 +369,7 @@ An error occurred in an after(:all) hook.
           results_for_descendants = children.ordered.map {|child| child.run(reporter)}.all?
           result_for_this_group && results_for_descendants
         rescue Exception => ex
+          RSpec.wants_to_quit = true if fail_fast?
           fail_filtered_examples(ex, reporter)
         ensure
           run_after_all_hooks(new)
@@ -417,7 +426,7 @@ An error occurred in an after(:all) hook.
 
       # @private
       def self.top_level_description
-        ancestors.last.description
+        parent_groups.last.description
       end
 
       # @private
@@ -432,7 +441,8 @@ An error occurred in an after(:all) hook.
 
       # @deprecated use {ExampleGroup#example}
       def running_example
-        RSpec.deprecate("running_example", "example")
+        RSpec.deprecate("running_example",
+                        :replacement => "example")
         example
       end
 

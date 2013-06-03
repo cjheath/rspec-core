@@ -28,10 +28,30 @@ describe RSpec::SharedContext do
 
     group.run
 
-    before_all_hook.should be_true
-    before_each_hook.should be_true
-    after_each_hook.should be_true
-    after_all_hook.should be_true
+    expect(before_all_hook).to be_true
+    expect(before_each_hook).to be_true
+    expect(after_each_hook).to be_true
+    expect(after_all_hook).to be_true
+  end
+
+  it "runs the before each hooks in configuration before those of the shared context" do
+    ordered_hooks = []
+    RSpec.configure do |c|
+      c.before(:each) { ordered_hooks << "config" }
+    end
+
+    shared_context("before each stuff", :example => :before_each_hook_order) do
+      before(:each) { ordered_hooks << "shared_context"}
+    end
+
+    group = RSpec::Core::ExampleGroup.describe :example => :before_each_hook_order do
+      before(:each) { ordered_hooks << "example_group" }
+      example {}
+    end
+
+    group.run
+
+    expect(ordered_hooks).to be == ["config", "shared_context", "example_group"]
   end
 
   it "supports let" do
@@ -43,7 +63,34 @@ describe RSpec::SharedContext do
       include shared
     end
 
-    group.new.foo.should eq('foo')
+    expect(group.new.foo).to eq('foo')
+  end
+
+  it 'supports explicit subjects' do
+    shared = Module.new do
+      extend RSpec::SharedContext
+      subject { 17 }
+    end
+
+    group = RSpec::Core::ExampleGroup.describe do
+      include shared
+    end
+
+    expect(group.new.subject).to eq(17)
+  end
+
+  it 'supports `its` with an implicit subject' do
+    shared = Module.new do
+      extend RSpec::SharedContext
+      its(:size) { should eq 0 }
+    end
+
+    group = RSpec::Core::ExampleGroup.describe(Array) do
+      include shared
+    end
+
+    group.run
+    expect(group.children.first.examples.first.execution_result).to include(:status => "passed")
   end
 
   %w[describe context].each do |method_name|
@@ -60,8 +107,8 @@ describe RSpec::SharedContext do
 
       group.run
 
-      group.children.length.should eq(1)
-      group.children.first.examples.length.should eq(1)
+      expect(group.children.length).to eq(1)
+      expect(group.children.first.examples.length).to eq(1)
     end
   end
 end
